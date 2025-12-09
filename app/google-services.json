@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "976773527080",
+    "project_id": "healhiveai",
+    "storage_bucket": "healhiveai.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:976773527080:android:cb5c7646621f411dcc271d",
+        "android_client_info": {
+          "package_name": "com.example.healthhive"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyAFIY6iQrQNTb_LMzbSncnpG2YYNwYZFyk"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
