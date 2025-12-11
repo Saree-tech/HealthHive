@@ -1,3 +1,5 @@
+// File: com/example/healthhive/MainActivity.kt (FULLY SYNCHRONIZED AND CORRECT)
+
 package com.example.healthhive
 
 import android.os.Bundle
@@ -5,7 +7,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect // <-- NEW IMPORT
+import androidx.compose.runtime.LaunchedEffect
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -33,9 +35,9 @@ class MainActivity : ComponentActivity() {
 
                 NavHost(
                     navController = navController,
-                    startDestination = Routes.SPLASH
+                    startDestination = Routes.SPLASH // Starts here
                 ) {
-                    // 1. SPLASH SCREEN (Navigation remains correct)
+                    // 1. SPLASH SCREEN (Correct)
                     composable(Routes.SPLASH) {
                         SplashScreen(
                             onNavigate = {
@@ -48,21 +50,17 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 2. ONBOARDING SCREEN (FIXED NAVIGATION LOGIC)
+                    // 2. ONBOARDING SCREEN (Correct)
                     composable(Routes.ONBOARDING) {
-                        // We observe the ViewModel's route state change
                         val newDestination by splashViewModel.nextRoute.collectAsState()
 
                         OnboardingScreen(
                             onOnboardingComplete = {
-                                // Only trigger the state update/save action in the ViewModel
                                 splashViewModel.finishOnboarding()
                             }
                         )
 
-                        // Use LaunchedEffect to react to the state change and navigate
                         LaunchedEffect(newDestination) {
-                            // Navigate only if the new destination is set and is NOT the onboarding screen itself
                             if (newDestination != null && newDestination != Routes.ONBOARDING) {
                                 navController.popBackStack()
                                 navController.navigate(newDestination!!)
@@ -70,12 +68,13 @@ class MainActivity : ComponentActivity() {
                         }
                     }
 
-                    // 3. LOGIN SCREEN (Remains the same)
+                    // 3. LOGIN SCREEN (Correct)
                     composable(Routes.LOGIN) {
                         LoginScreen(
-                            onLoginClick = {
-                                // TODO: Replace with authenticated navigation after Firebase setup
-                                navController.navigate(Routes.HOME)
+                            onLoginSuccess = {
+                                navController.navigate(Routes.HOME) {
+                                    popUpTo(Routes.SPLASH) { inclusive = true }
+                                }
                             },
                             onSignUpClick = {
                                 navController.navigate(Routes.SIGNUP)
@@ -86,10 +85,9 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 4. HOME SCREEN (Remains the same)
+                    // 4. HOME SCREEN (Ready for VM integration next)
                     composable(Routes.HOME) {
                         HomeScreen(
-                            userName = "HealthHive User",
                             onNavigateTo = { route -> navController.navigate(route) },
                             onSymptomCheckerClick = {
                                 navController.navigate(Routes.SYMPTOM_CHECKER)
@@ -109,10 +107,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 5. SIGNUP SCREEN (Remains the same)
+                    // 5. SIGNUP SCREEN (FIXED: onSignUpClick -> onSignUpSuccess)
                     composable(Routes.SIGNUP) {
                         SignUpScreen(
-                            onSignUpClick = {
+                            onSignUpSuccess = { // <-- FIXED PARAMETER NAME
+                                // Navigate to HOME upon successful registration
                                 navController.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
                             },
                             onBackToLoginClick = {
@@ -121,11 +120,11 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 6. FORGOT PASSWORD SCREEN (Remains the same)
+                    // 6. FORGOT PASSWORD SCREEN (FIXED: onSendResetClick -> onSendResetSuccess)
                     composable(Routes.FORGOT_PASSWORD) {
                         ForgotPasswordScreen(
-                            onSendResetClick = { email ->
-                                // TODO: Implement reset email logic
+                            onSendResetSuccess = { // <-- FIXED PARAMETER NAME
+                                // Navigate back to login screen on successful email send
                                 navController.popBackStack(Routes.LOGIN, inclusive = false)
                             },
                             onBackToLoginClick = {
@@ -134,7 +133,7 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 7. FEATURE PLACEHOLDERS (Remains the same)
+                    // 7. FEATURE PLACEHOLDERS (Correct)
                     composable(Routes.SYMPTOM_CHECKER) { Text("AI Symptom Checker Screen is coming soon!") }
                     composable(Routes.RECOMMENDATIONS) { Text("Health Tracker Recommendations Screen is coming soon!") }
                     composable(Routes.REPORTS) { Text("History / Reports Screen is coming soon!") }
