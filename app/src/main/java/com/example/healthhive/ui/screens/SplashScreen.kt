@@ -37,7 +37,7 @@ fun SplashScreen(onNavigate: () -> Unit) { // <-- Simplified signature
     ) {
         // --- LOGO IMPLEMENTATION ---
         Image(
-            painter = painterResource(id = R.drawable.chatgpt_image_dec_9__2025__07_52_24_pm), // <-- **Change this to your actual logo resource ID**
+            painter = painterResource(id = R.drawable.logo), // <-- **Change this to your actual logo resource ID**
             contentDescription = "HealthHive Logo",
             modifier = Modifier.size(250.dp) // Adjust size as needed
         )

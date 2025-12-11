@@ -1,5 +1,3 @@
-// File: com/example/healthhive/MainActivity.kt
-
 package com.example.healthhive
 
 import android.os.Bundle
@@ -7,18 +5,20 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Modifier
+import androidx.compose.runtime.LaunchedEffect // <-- NEW IMPORT
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.healthhive.ui.screens.LoginScreen
 import com.example.healthhive.viewmodel.SplashViewModel
-import androidx.compose.foundation.layout.padding
-import androidx.compose.ui.unit.dp
-// Import the missing SplashScreen and OnboardingScreen composables
+import androidx.compose.material3.Text
+// Make sure to import all required screens
+import com.example.healthhive.ui.screens.HomeScreen
 import com.example.healthhive.ui.screens.SplashScreen
-import com.example.healthhive.ui.screens.OnboardingScreen // Assuming you have this screen
+import com.example.healthhive.ui.screens.OnboardingScreen
+import com.example.healthhive.ui.screens.SignUpScreen
+import com.example.healthhive.ui.screens.ForgotPasswordScreen
 import com.example.healthhive.ui.theme.HealthHiveTheme
 
 
@@ -29,26 +29,18 @@ class MainActivity : ComponentActivity() {
             HealthHiveTheme {
                 val navController = rememberNavController()
                 val splashViewModel: SplashViewModel = viewModel()
-
-                // Keep observing the next route from the ViewModel
                 val startDestination by splashViewModel.nextRoute.collectAsState()
 
-                // FIX: Remove the 'startDestination?.let { ... }' wrapper.
-                // The NavHost must be built immediately using Routes.SPLASH as the start.
                 NavHost(
                     navController = navController,
-                    startDestination = Routes.SPLASH // <-- Always start at SPLASH
+                    startDestination = Routes.SPLASH
                 ) {
-
-                    // 1. SPLASH SCREEN (FIXED NAVIGATION LOGIC)
+                    // 1. SPLASH SCREEN (Navigation remains correct)
                     composable(Routes.SPLASH) {
                         SplashScreen(
                             onNavigate = {
-                                // Check for the result here. This will only run after the delay.
                                 val destination = startDestination
-
                                 if (destination != null) {
-                                    // Navigate to the determined route (ONBOARDING, LOGIN, or HOME)
                                     navController.popBackStack()
                                     navController.navigate(destination)
                                 }
@@ -56,26 +48,33 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 2. ONBOARDING SCREEN (assuming existence of OnboardingScreen composable)
+                    // 2. ONBOARDING SCREEN (FIXED NAVIGATION LOGIC)
                     composable(Routes.ONBOARDING) {
+                        // We observe the ViewModel's route state change
+                        val newDestination by splashViewModel.nextRoute.collectAsState()
+
                         OnboardingScreen(
                             onOnboardingComplete = {
+                                // Only trigger the state update/save action in the ViewModel
                                 splashViewModel.finishOnboarding()
-
-                                val destination = splashViewModel.nextRoute.value
-                                if (destination != null) {
-                                    navController.popBackStack()
-                                    navController.navigate(destination)
-                                }
                             }
                         )
+
+                        // Use LaunchedEffect to react to the state change and navigate
+                        LaunchedEffect(newDestination) {
+                            // Navigate only if the new destination is set and is NOT the onboarding screen itself
+                            if (newDestination != null && newDestination != Routes.ONBOARDING) {
+                                navController.popBackStack()
+                                navController.navigate(newDestination!!)
+                            }
+                        }
                     }
 
-                    // 3. LOGIN SCREEN
+                    // 3. LOGIN SCREEN (Remains the same)
                     composable(Routes.LOGIN) {
                         LoginScreen(
                             onLoginClick = {
-                                // TODO: Implement authentication logic and navigate to Routes.HOME
+                                // TODO: Replace with authenticated navigation after Firebase setup
                                 navController.navigate(Routes.HOME)
                             },
                             onSignUpClick = {
@@ -87,22 +86,61 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 4. HOME SCREEN
+                    // 4. HOME SCREEN (Remains the same)
                     composable(Routes.HOME) {
-                        androidx.compose.material3.Text("Home Screen Placeholder")
+                        HomeScreen(
+                            userName = "HealthHive User",
+                            onNavigateTo = { route -> navController.navigate(route) },
+                            onSymptomCheckerClick = {
+                                navController.navigate(Routes.SYMPTOM_CHECKER)
+                            },
+                            onRecommendationsClick = {
+                                navController.navigate(Routes.RECOMMENDATIONS)
+                            },
+                            onReportsClick = {
+                                navController.navigate(Routes.REPORTS)
+                            },
+                            onTipsClick = {
+                                navController.navigate(Routes.TIPS)
+                            },
+                            onSettingsClick = {
+                                navController.navigate(Routes.SETTINGS)
+                            }
+                        )
                     }
 
-                    // 5. SIGNUP SCREEN (NEW)
+                    // 5. SIGNUP SCREEN (Remains the same)
                     composable(Routes.SIGNUP) {
-                        // Placeholder UI
-                        androidx.compose.material3.Text("Sign Up Screen is under construction!", modifier = Modifier.padding(16.dp))
+                        SignUpScreen(
+                            onSignUpClick = {
+                                navController.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
+                            },
+                            onBackToLoginClick = {
+                                navController.popBackStack()
+                            }
+                        )
                     }
 
-                    // 6. FORGOT PASSWORD SCREEN (NEW)
+                    // 6. FORGOT PASSWORD SCREEN (Remains the same)
                     composable(Routes.FORGOT_PASSWORD) {
-                        // Placeholder UI
-                        androidx.compose.material3.Text("Forgot Password Screen is under construction!", modifier = Modifier.padding(16.dp))
+                        ForgotPasswordScreen(
+                            onSendResetClick = { email ->
+                                // TODO: Implement reset email logic
+                                navController.popBackStack(Routes.LOGIN, inclusive = false)
+                            },
+                            onBackToLoginClick = {
+                                navController.popBackStack()
+                            }
+                        )
                     }
+
+                    // 7. FEATURE PLACEHOLDERS (Remains the same)
+                    composable(Routes.SYMPTOM_CHECKER) { Text("AI Symptom Checker Screen is coming soon!") }
+                    composable(Routes.RECOMMENDATIONS) { Text("Health Tracker Recommendations Screen is coming soon!") }
+                    composable(Routes.REPORTS) { Text("History / Reports Screen is coming soon!") }
+                    composable(Routes.TIPS) { Text("Health Tips Screen is coming soon!") }
+                    composable(Routes.SETTINGS) { Text("Settings Screen is coming soon!") }
+                    composable(Routes.NOTIFICATIONS) { Text("Notifications Screen is coming soon!") }
                 }
             }
         }

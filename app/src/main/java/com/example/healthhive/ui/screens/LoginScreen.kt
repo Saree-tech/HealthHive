@@ -37,7 +37,7 @@ fun LoginScreen(
 
         // 1. Logo
         Image(
-            painter = painterResource(id = R.drawable.chatgpt_image_dec_9__2025__07_52_24_pm), // Use your actual logo resource ID
+            painter = painterResource(id = R.drawable.logo), // Use your actual logo resource ID
             contentDescription = "HealthHive Logo",
             modifier = Modifier.size(150.dp)
         )

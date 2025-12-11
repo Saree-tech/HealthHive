@@ -1,33 +1,36 @@
-// File: com/example/healthhive/viewmodel/SplashViewModel.kt
+// File: com/example/healthhive/viewmodel/SplashViewModel.kt (UPDATED)
 
 package com.example.healthhive.viewmodel
 
-import androidx.lifecycle.ViewModel
+import android.app.Application
+import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.healthhive.Routes
+import com.example.healthhive.utils.PreferencesManager
 import com.google.firebase.auth.FirebaseAuth
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
-class SplashViewModel : ViewModel() {
+// IMPORTANT: ViewModel must be AndroidViewModel to access Application Context for DataStore
+class SplashViewModel(application: Application) : AndroidViewModel(application) {
 
-    // Note: You must ensure you initialize Firebase in your application class or activity
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
+    private val prefsManager = PreferencesManager(application.applicationContext)
 
     private val _nextRoute = MutableStateFlow<String?>(null)
     val nextRoute: StateFlow<String?> = _nextRoute
 
-    // In a real app, this value MUST be read from DataStore/SharedPreferences
-    // For now, it's simulated to trigger the onboarding flow on the first run.
-    private var isOnboardingComplete: Boolean = false
-
     init {
         viewModelScope.launch {
-            // Simulate reading the persistence flag and any initial load time
-            delay(500)
-            checkNextDestination()
+            // Read the persistent state before proceeding
+            val isComplete = prefsManager.isOnboardingComplete.first()
+
+            // Simulate splash delay (or initial load time)
+            // delay(500)
+
+            checkNextDestination(isComplete)
         }
     }
 
@@ -36,14 +39,16 @@ class SplashViewModel : ViewModel() {
      * This marks onboarding as complete and checks authentication.
      */
     fun finishOnboarding() {
-        // In a real app, save this state to DataStore/SharedPreferences
-        isOnboardingComplete = true
+        viewModelScope.launch {
+            // 1. Save state to DataStore
+            prefsManager.setOnboardingComplete(true)
 
-        // Immediately check the final destination after onboarding is done
-        checkAuthenticationStatus()
+            // 2. Immediately check the final destination after onboarding is done
+            checkAuthenticationStatus()
+        }
     }
 
-    private fun checkNextDestination() {
+    private fun checkNextDestination(isOnboardingComplete: Boolean) {
         if (!isOnboardingComplete) {
             _nextRoute.value = Routes.ONBOARDING
         } else {

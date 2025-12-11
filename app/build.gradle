@@ -1,8 +1,10 @@
+// File: build.gradle (Module: app) - Cleaned and Corrected
+
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
     id 'org.jetbrains.kotlin.plugin.compose'
-    id 'com.google.gms.google-services'
+    id 'com.google.gms.google-services' // Required for Firebase
 }
 
 android {
@@ -40,30 +42,45 @@ android {
 }
 
 dependencies {
-    // 1. JETPACK COMPOSE & CORE ANDROID LIBRARIES
+    // 1. CORE ANDROID LIBRARIES
     implementation libs.androidx.core.ktx
     implementation libs.androidx.lifecycle.runtime.ktx
+
+    // 2. JETPACK COMPOSE LIBRARIES
     implementation libs.androidx.activity.compose
     implementation libs.androidx.lifecycle.viewmodel.compose
     implementation libs.androidx.navigation.compose
 
+    // Compose BOM (Best practice for version management)
     implementation platform(libs.androidx.compose.bom)
     implementation libs.androidx.compose.ui
     implementation libs.androidx.compose.ui.graphics
     implementation libs.androidx.compose.material3
 
-    // 2. FIREBASE INTEGRATION (BOM controls versions)
+    // Compose specific dependencies
+    implementation("androidx.compose.foundation:foundation") // Use the version from BOM
+    implementation("androidx.compose.material:material-icons-extended") // For advanced Icons
+    implementation libs.androidx.ui // Standard Compose UI components
+
+    // 3. MVVM & PERSISTENCE (DataStore, Coroutines, ViewModel KTX)
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0") // Coroutine support for ViewModel
+    implementation("androidx.datastore:datastore-preferences:1.0.0")   // DataStore Persistence
+
+    // Coroutine support (Explicitly defined for robustness)
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
+
+    // 4. FIREBASE INTEGRATION (BOM controls versions)
     implementation platform("com.google.firebase:firebase-bom:34.6.0")
 
-    implementation ("com.google.firebase:firebase-auth")
-    implementation ("com.google.firebase:firebase-database")
-    implementation ("com.google.firebase:firebase-messaging")
-    implementation ("com.google.firebase:firebase-analytics")
-    implementation("androidx.compose.foundation:foundation:<compose_version>")
-    implementation("androidx.lifecycle:lifecycle-viewmodel-compose:<latest_version>")
-    implementation libs.androidx.ui
+    // Firebase services needed for Auth and Data storage
+    implementation("com.google.firebase:firebase-auth")        // Authentication (Using KTX version is best practice)
+    implementation("com.google.firebase:firebase-firestore")   // Firestore (Better than Realtime Database for new projects)
+    implementation("com.google.firebase:firebase-analytics")   // Analytics
 
-    // 3. TESTING LIBRARIES
+    // NOTE: Removed unnecessary firebase-database and firebase-messaging for now.
+
+    // 5. TESTING LIBRARIES (Remains the same)
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core
