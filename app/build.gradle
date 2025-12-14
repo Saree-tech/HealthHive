@@ -1,5 +1,3 @@
-// File: build.gradle (Module: app) - Cleaned and Corrected
-
 plugins {
     id 'com.android.application'
     id 'org.jetbrains.kotlin.android'
@@ -7,18 +5,35 @@ plugins {
     id 'com.google.gms.google-services' // Required for Firebase
 }
 
+// 🔑 API Key Property Loading using Groovy syntax
+def properties = new Properties()
+if (rootProject.file("local.properties").exists()) {
+    properties.load(rootProject.file("local.properties").newDataInputStream())
+}
+def geminiApiKey = properties.getProperty("GEMINI_API_KEY", "")
+
 android {
     namespace 'com.example.healthhive'
     compileSdk 36
 
+    // 🛑 FIX FOR WARNING: Explicitly enable BuildConfig feature
+    buildFeatures {
+        buildConfig = true
+        compose true
+    }
+    // ----------------------------------------------------
+
     defaultConfig {
         applicationId "com.example.healthhive"
-        minSdk 24
+        minSdk 25
         targetSdk 36
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
+
+        // Inject the API key into the generated BuildConfig file
+        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
     }
 
     buildTypes {
@@ -35,10 +50,6 @@ android {
     kotlinOptions {
         jvmTarget = '11'
     }
-
-    buildFeatures {
-        compose true
-    }
 }
 
 dependencies {
@@ -46,41 +57,41 @@ dependencies {
     implementation libs.androidx.core.ktx
     implementation libs.androidx.lifecycle.runtime.ktx
 
-    // 2. JETPACK COMPOSE LIBRARIES
+    // 2. JETPACK COMPOSE LIBRARIES (Using BOM for unified versioning)
+    implementation platform(libs.androidx.compose.bom)
+
+    // Core Compose Dependencies
     implementation libs.androidx.activity.compose
     implementation libs.androidx.lifecycle.viewmodel.compose
     implementation libs.androidx.navigation.compose
 
-    // Compose BOM (Best practice for version management)
-    implementation platform(libs.androidx.compose.bom)
+    // UI, Graphics, and Material 3
     implementation libs.androidx.compose.ui
     implementation libs.androidx.compose.ui.graphics
     implementation libs.androidx.compose.material3
 
-    // Compose specific dependencies
-    implementation("androidx.compose.foundation:foundation") // Use the version from BOM
-    implementation("androidx.compose.material:material-icons-extended") // For advanced Icons
-    implementation libs.androidx.ui // Standard Compose UI components
+    // Critical Compose Foundation Libraries
+    implementation("androidx.compose.foundation:foundation") // Use string for foundation if not in libs.versions.toml
+    implementation("androidx.compose.material:material-icons-extended")
 
-    // 3. MVVM & PERSISTENCE (DataStore, Coroutines, ViewModel KTX)
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0") // Coroutine support for ViewModel
-    implementation("androidx.datastore:datastore-preferences:1.0.0")   // DataStore Persistence
+    // 3. MVVM & PERSISTENCE
+    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0") // Keep explicit version if not using BOM for ViewModel
+    implementation("androidx.datastore:datastore-preferences:1.0.0")
 
-    // Coroutine support (Explicitly defined for robustness)
+    // Coroutine support (Keep explicit versions)
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
 
-    // 4. FIREBASE INTEGRATION (BOM controls versions)
+    // 4. FIREBASE INTEGRATION
     implementation platform("com.google.firebase:firebase-bom:34.6.0")
+    implementation("com.google.firebase:firebase-auth")
+    implementation("com.google.firebase:firebase-firestore")
+    implementation("com.google.firebase:firebase-analytics")
 
-    // Firebase services needed for Auth and Data storage
-    implementation("com.google.firebase:firebase-auth")        // Authentication (Using KTX version is best practice)
-    implementation("com.google.firebase:firebase-firestore")   // Firestore (Better than Realtime Database for new projects)
-    implementation("com.google.firebase:firebase-analytics")   // Analytics
+    // 5. GEMINI API (Keep explicit version)
+    implementation("com.google.ai.client.generativeai:generativeai:0.8.0")
 
-    // NOTE: Removed unnecessary firebase-database and firebase-messaging for now.
-
-    // 5. TESTING LIBRARIES (Remains the same)
+    // 6. TESTING LIBRARIES
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core

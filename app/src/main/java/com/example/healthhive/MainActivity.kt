@@ -1,10 +1,9 @@
-// File: com/example/healthhive/MainActivity.kt (FULLY SYNCHRONIZED AND CORRECT)
-
 package com.example.healthhive
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.LaunchedEffect
@@ -23,8 +22,12 @@ import com.example.healthhive.ui.screens.SignUpScreen
 import com.example.healthhive.ui.screens.ForgotPasswordScreen
 import com.example.healthhive.ui.theme.HealthHiveTheme
 
+// 🛑 CRITICAL FIX 1: Import the SymptomCheckerScreen UI file
+import com.example.healthhive.ui.SymptomCheckerScreen
+
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -110,7 +113,7 @@ class MainActivity : ComponentActivity() {
                     // 5. SIGNUP SCREEN (FIXED: onSignUpClick -> onSignUpSuccess)
                     composable(Routes.SIGNUP) {
                         SignUpScreen(
-                            onSignUpSuccess = { // <-- FIXED PARAMETER NAME
+                            onSignUpSuccess = {
                                 // Navigate to HOME upon successful registration
                                 navController.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
                             },
@@ -123,7 +126,7 @@ class MainActivity : ComponentActivity() {
                     // 6. FORGOT PASSWORD SCREEN (FIXED: onSendResetClick -> onSendResetSuccess)
                     composable(Routes.FORGOT_PASSWORD) {
                         ForgotPasswordScreen(
-                            onSendResetSuccess = { // <-- FIXED PARAMETER NAME
+                            onSendResetSuccess = {
                                 // Navigate back to login screen on successful email send
                                 navController.popBackStack(Routes.LOGIN, inclusive = false)
                             },
@@ -133,8 +136,10 @@ class MainActivity : ComponentActivity() {
                         )
                     }
 
-                    // 7. FEATURE PLACEHOLDERS (Correct)
-                    composable(Routes.SYMPTOM_CHECKER) { Text("AI Symptom Checker Screen is coming soon!") }
+                    // 🛑 CRITICAL FIX 2: Replace the placeholder Text with the actual Composable
+                    composable(Routes.SYMPTOM_CHECKER) { SymptomCheckerScreen() }
+
+                    // 7. FEATURE PLACEHOLDERS (Remaining unchanged)
                     composable(Routes.RECOMMENDATIONS) { Text("Health Tracker Recommendations Screen is coming soon!") }
                     composable(Routes.REPORTS) { Text("History / Reports Screen is coming soon!") }
                     composable(Routes.TIPS) { Text("Health Tips Screen is coming soon!") }
