@@ -1,14 +1,10 @@
 plugins {
-    // Note: If the versions are NOT defined in the project's root build.gradle,
-    // you must define them here. Assuming they are NOT defined at the root:
-    id 'com.android.application' version '8.2.0' // Explicitly set AGP version
-    id 'org.jetbrains.kotlin.android' version '2.0.0' // Explicitly set Kotlin version
-    // The Compose Compiler plugin (Required for Kotlin 2.0+)
-    id 'org.jetbrains.kotlin.plugin.compose' version '2.0.0' // Explicitly set Compose plugin version
-    id 'com.google.gms.google-services' version '4.4.4' // Explicitly set Google Services version
+    id 'com.android.application' version '8.2.0'
+    id 'org.jetbrains.kotlin.android' version '2.0.0'
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.0.0'
+    id 'com.google.gms.google-services' version '4.4.4'
 }
 
-// Load API Key from local.properties
 def properties = new Properties()
 if (rootProject.file("local.properties").exists()) {
     properties.load(rootProject.file("local.properties").newDataInputStream())
@@ -17,7 +13,7 @@ def geminiApiKey = properties.getProperty("GEMINI_API_KEY", "")
 
 android {
     namespace 'com.example.healthhive'
-    compileSdk 34 // Stable SDK version
+    compileSdk 34
 
     buildFeatures {
         buildConfig = true
@@ -33,7 +29,6 @@ android {
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // Inject the API key into BuildConfig
         buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
     }
 
@@ -49,17 +44,16 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
     kotlinOptions {
-        // Ensure JVM Target is set for Kotlin 2.0
         jvmTarget = '11'
     }
 }
 
 dependencies {
-    // --- Core Android ---
+    // Core Android
     implementation libs.androidx.core.ktx
     implementation libs.androidx.lifecycle.runtime.ktx
 
-    // --- Jetpack Compose (BOM) ---
+    // Jetpack Compose (BOM)
     implementation platform(libs.androidx.compose.bom)
 
     // UI & Material
@@ -73,28 +67,26 @@ dependencies {
     implementation libs.androidx.activity.compose
     implementation libs.androidx.lifecycle.viewmodel.compose
     implementation libs.androidx.navigation.compose
-
-    // UPDATED: Use the latest stable version
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3"
 
     // DataStore
-    implementation "androidx.datastore:datastore-preferences:1.1.1" // Updated version
+    implementation "androidx.datastore:datastore-preferences:1.1.1"
 
-    // --- Coroutines ---
-    // UPDATED: Use the latest stable version
+    // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 
-    // --- Firebase (BOM) ---
+    // Firebase (BOM)
     implementation platform("com.google.firebase:firebase-bom:34.6.0")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-analytics")
 
-    // --- AI / Gemini ---
+    // AI / Gemini
     implementation("com.google.ai.client.generativeai:generativeai:0.8.0")
+    implementation ("com.google.code.gson:gson:2.10.1")
 
-    // --- Testing ---
+    // Testing
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core

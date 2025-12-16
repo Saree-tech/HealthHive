@@ -1,26 +1,40 @@
 package com.example.healthhive.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material3.*
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.healthhive.R
+import com.example.healthhive.ui.theme.*
+import com.example.healthhive.viewmodel.ChatMessage
 import com.example.healthhive.viewmodel.SymptomCheckerViewModel
-import com.example.healthhive.viewmodel.SymptomCheckerUiState
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+// IMPORTANT: Ensure the following lines are NOT present:
+// import com.google.accompanist.insets.LocalWindowInsets
+// import com.google.accompanist.insets.imePadding // This is why 'imePadding' failed earlier
+// import com.google.accompanist.insets.navigationBarsWithImePadding // This is the current error
+// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -29,287 +43,248 @@ fun SymptomCheckerScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val assistantName = viewModel.getAssistantName()
+    val listState = rememberLazyListState()
+    val coroutineScope = rememberCoroutineScope()
 
-    // Custom colors for the chat bubbles and UI elements
-    val LumiPurple = Color(0xFF9370DB) // A friendly, light purple
-    val LumiBackground = Color(0xFFF7F4FF) // Very light purple/off-white background
+    // 1. Detect Keyboard Visibility (FIXED: Using native Compose Insets API)
+    // The error 'Function invocation 'bottom()' expected' is solved by using getBottom(density)
+    val isKeyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+
+    // Scroll to the latest message whenever chat history updates
+    LaunchedEffect(uiState.chatHistory.size) {
+        if (uiState.chatHistory.isNotEmpty()) {
+            coroutineScope.launch {
+                listState.animateScrollToItem(uiState.chatHistory.lastIndex)
+            }
+        }
+    }
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("Chat with $assistantName") },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = LumiBackground)
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = PrimaryBlue)
             )
         },
         bottomBar = {
-            if (uiState.result == null || uiState.isInitialAnalysis) {
-                ChatInputArea(uiState = uiState, viewModel = viewModel, LumiPurple = LumiPurple)
-            } else {
-                // Display reset button after initial analysis is complete
+            ChatInput(
+                messageInput = uiState.messageInput,
+                onInputChanged = viewModel::updateMessageInput,
+                onSend = { viewModel.sendMessage(uiState.messageInput) },
+                isLoading = uiState.isLoading
+            )
+        },
+        modifier = Modifier.fillMaxSize()
+            // FIXED: Using native WindowInsets padding (resolves navigationBarsWithImePadding error)
+            .windowInsetsPadding(WindowInsets.safeDrawing)
+    ) { paddingValues ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                // FIXED: Using native imePadding
+                .imePadding()
+        ) {
+            // 2. Logo/Intro Screen that disappears when the keyboard appears
+            AnimatedVisibility(
+                visible = !isKeyboardVisible && uiState.chatHistory.size <= 1,
+                enter = fadeIn(),
+                exit = fadeOut(),
+            ) {
+                IntroScreen(assistantName)
+            }
+
+            // 3. Chat Log
+            LazyColumn(
+                state = listState,
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.Bottom
+            ) {
+                items(uiState.chatHistory) { message ->
+                    ChatBubble(message = message, assistantName = assistantName)
+                }
+
+                // Add loading indicator as the last item
+                if (uiState.isLoading) {
+                    item { LoadingBubble() }
+                }
+            }
+
+            // 4. Reset Button (Optional)
+            if (uiState.isAnalysisComplete) {
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    Button(onClick = viewModel::resetAnalysis) {
+                    OutlinedButton(
+                        onClick = viewModel::resetAnalysis,
+                        enabled = !uiState.isLoading,
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
                         Text("Start New Symptom Check")
                     }
                 }
             }
-        },
-        containerColor = LumiBackground
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Header with Lumi's persona, similar to the image
-            LumiChatHeader(assistantName)
-
-            // Pass the Modifier.weight() from the parent Column's scope to ChatMessages
-            ChatMessages(
-                uiState = uiState,
-                assistantName = assistantName,
-                LumiPurple = LumiPurple,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f) // Applies the weight correctly from ColumnScope
-            )
-
-            // Display error dialog if needed
-            if (uiState.error != null) {
-                AlertDialog(
-                    onDismissRequest = { viewModel.resetAnalysis() },
-                    title = { Text("Error") },
-                    text = { Text(uiState.error ?: "An unknown error occurred.") },
-                    confirmButton = {
-                        Button(onClick = { viewModel.resetAnalysis() }) {
-                            Text("OK")
-                        }
-                    }
-                )
-            }
         }
     }
 }
 
 @Composable
-fun LumiChatHeader(assistantName: String) {
+fun IntroScreen(assistantName: String) {
     Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 250.dp, max = 300.dp)
+            .padding(16.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        modifier = Modifier.padding(top = 16.dp, bottom = 24.dp)
+        verticalArrangement = Arrangement.Center
     ) {
-        // Placeholder for a stylish AI icon (like the abstract crystal in the image)
-        Box(
-            modifier = Modifier
-                .size(64.dp)
-                .background(Color(0xFFE0B0FF).copy(alpha = 0.5f), RoundedCornerShape(20.dp)),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("🔮", style = MaterialTheme.typography.headlineMedium)
-        }
-
+        // NOTE: Check your R.drawable resource name!
+        Image(
+            painter = painterResource(id = R.drawable.assistant_logo),
+            contentDescription = "Assistant Logo",
+            modifier = Modifier.size(80.dp)
+        )
         Spacer(modifier = Modifier.height(16.dp))
         Text(
             text = "Hey! I'm $assistantName, your AI Health Assistant",
-            style = MaterialTheme.typography.headlineSmall,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF333366) // Dark purple text
+            style = MaterialTheme.typography.titleLarge,
+            color = PrimaryBlue,
+            fontWeight = FontWeight.Bold
         )
         Text(
             text = "Ready to help you, right here.",
             style = MaterialTheme.typography.bodyMedium,
-            color = Color.Gray
+            color = Color.Gray,
+            modifier = Modifier.padding(top = 4.dp)
         )
     }
 }
 
 @Composable
-fun ChatInputArea(
-    uiState: SymptomCheckerUiState,
-    viewModel: SymptomCheckerViewModel,
-    LumiPurple: Color
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp)
-            .background(Color.White, RoundedCornerShape(16.dp))
-            .padding(8.dp)
-    ) {
-        // --- Display Selected Symptoms as Chips ---
-        if (uiState.selectedSymptoms.isNotEmpty()) {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                items(uiState.selectedSymptoms) { symptom ->
-                    InputChip(
-                        selected = true,
-                        onClick = { viewModel.removeSymptom(symptom) },
-                        label = { Text(symptom) },
-                        trailingIcon = {
-                            IconButton(onClick = { viewModel.removeSymptom(symptom) }) {
-                                Icon(Icons.Default.Close, contentDescription = "Remove")
-                            }
-                        },
-                        colors = InputChipDefaults.inputChipColors(
-                            containerColor = LumiPurple.copy(alpha = 0.1f),
-                            labelColor = LumiPurple
-                        )
-                    )
-                }
-            }
-        }
-
-        // --- Input Field and Send Button (Combined) ---
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            OutlinedTextField(
-                value = uiState.symptomInput,
-                onValueChange = { viewModel.updateSymptomInput(it) },
-                label = { Text("Type AI symptoms here...") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                // Using the parameter-less default colors to bypass the dependency conflict
-                colors = OutlinedTextFieldDefaults.colors()
-            )
-
-            Spacer(modifier = Modifier.width(8.dp))
-
-            // Send Button: Adds the current input to the selected list and triggers analysis
-            FloatingActionButton(
-                onClick = {
-                    val canAnalyze = uiState.selectedSymptoms.isNotEmpty() || uiState.symptomInput.isNotBlank()
-
-                    if (uiState.symptomInput.isNotBlank()) {
-                        viewModel.addSymptom(uiState.symptomInput.trim())
-                    }
-                    if (canAnalyze && !uiState.isLoading) {
-                        viewModel.analyzeSymptoms()
-                    }
-                },
-                modifier = Modifier.size(48.dp),
-                containerColor = LumiPurple,
-                contentColor = Color.White,
-                // The 'enabled' parameter is removed, fixing the compilation error at line 195
-            ) {
-                // Correct: Composable functions (like CircularProgressIndicator and Icon)
-                // must be called directly inside this content lambda block.
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        Modifier.size(24.dp),
-                        color = Color.White,
-                        strokeWidth = 2.dp
-                    )
-                } else {
-                    Icon(Icons.Default.Send, contentDescription = "Send Message")
-                }
-            }
-        }
-    }
-}
-
-
-@Composable
-fun ChatMessages(
-    uiState: SymptomCheckerUiState,
-    assistantName: String,
-    LumiPurple: Color,
-    modifier: Modifier = Modifier // Accepts the modifier from the parent
-) {
-    LazyColumn(
-        modifier = modifier.padding(horizontal = 16.dp), // Uses the modifier passed down by the parent
-        reverseLayout = true // Start from the bottom
-    ) {
-        // 1. Lumi's Initial Welcome Message (only shown before first analysis)
-        if (uiState.isInitialAnalysis && uiState.result == null) {
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                AIChatBubble(
-                    message = "Hello! Please tell me your symptoms, and I'll provide a helpful analysis.",
-                    LumiPurple = LumiPurple,
-                    assistantName = assistantName
-                )
-            }
-        }
-
-        // 2. Lumi's Analysis Result (after analysis)
-        if (uiState.result != null) {
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                AIChatBubble(
-                    message = uiState.result!!,
-                    LumiPurple = LumiPurple,
-                    assistantName = assistantName
-                )
-            }
-        }
-
-        // 3. User's Input (Simulated message)
-        if (uiState.selectedSymptoms.isNotEmpty() && uiState.result != null) {
-            item {
-                Spacer(modifier = Modifier.height(16.dp))
-                UserChatBubble(
-                    message = "Symptoms entered: ${uiState.selectedSymptoms.joinToString(", ")}"
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun AIChatBubble(message: String, LumiPurple: Color, assistantName: String) {
+fun ChatBubble(message: ChatMessage, assistantName: String) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        horizontalArrangement = Arrangement.Start
+            .padding(vertical = 4.dp),
+        horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
     ) {
-        // Assistant Initial (L) or Icon
+        if (!message.isUser) {
+            // Assistant Icon (Lumi)
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(Color.LightGray.copy(alpha = 0.5f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(assistantName.first().toString(), fontSize = 16.sp, color = DarkTeal)
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        val backgroundColor = if (message.isUser) PrimaryBlue else LightTeal
+        val contentColor = if (message.isUser) Color.White else DarkTeal
+
+        // Chat Bubble Content
+        Card(
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = if (message.isUser) 16.dp else 4.dp,
+                bottomEnd = if (message.isUser) 4.dp else 16.dp
+            ),
+            colors = CardDefaults.cardColors(containerColor = backgroundColor),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        ) {
+            Text(
+                text = message.text,
+                color = contentColor,
+                modifier = Modifier.padding(10.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+@Composable
+fun LoadingBubble() {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.Start,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        // Assistant Icon placeholder
         Box(
             modifier = Modifier
                 .size(32.dp)
-                .background(LumiPurple, RoundedCornerShape(10.dp)),
+                .clip(RoundedCornerShape(8.dp))
+                .background(Color.LightGray.copy(alpha = 0.5f)),
             contentAlignment = Alignment.Center
         ) {
-            Text(assistantName.first().toString(), color = Color.White, fontWeight = FontWeight.Bold)
+            // ... (Assistant initial/icon)
         }
         Spacer(modifier = Modifier.width(8.dp))
 
         Card(
-            shape = RoundedCornerShape(topStart = 0.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 16.dp),
-            colors = CardDefaults.cardColors(containerColor = LumiPurple.copy(alpha = 0.2f)),
-            modifier = Modifier.weight(1f, fill = false)
+            shape = RoundedCornerShape(
+                topStart = 16.dp,
+                topEnd = 16.dp,
+                bottomStart = 4.dp,
+                bottomEnd = 16.dp
+            ),
+            colors = CardDefaults.cardColors(containerColor = LightTeal),
+            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
         ) {
             Text(
-                text = message,
-                modifier = Modifier.padding(12.dp),
-                color = Color.Black
+                text = "Lumi is thinking...",
+                color = DarkTeal.copy(alpha = 0.6f),
+                modifier = Modifier.padding(10.dp),
+                style = MaterialTheme.typography.bodyMedium
             )
         }
     }
 }
 
 @Composable
-fun UserChatBubble(message: String) {
+fun ChatInput(
+    messageInput: String,
+    onInputChanged: (String) -> Unit,
+    onSend: () -> Unit,
+    isLoading: Boolean
+) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(bottom = 8.dp),
-        horizontalArrangement = Arrangement.End
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Card(
-            shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp, bottomStart = 16.dp, bottomEnd = 0.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFFC8E6C9)), // Light Green/Blueish for user
-            modifier = Modifier.weight(1f, fill = false)
+        OutlinedTextField(
+            value = messageInput,
+            onValueChange = onInputChanged,
+            label = { Text("Enter symptoms or question...") },
+            modifier = Modifier.weight(1f),
+            shape = RoundedCornerShape(24.dp),
+            maxLines = 4,
+            enabled = !isLoading
+        )
+
+        Spacer(modifier = Modifier.width(8.dp))
+
+        Button(
+            onClick = onSend,
+            enabled = messageInput.isNotBlank() && !isLoading,
+            shape = RoundedCornerShape(24.dp),
+            modifier = Modifier.height(56.dp)
         ) {
-            Text(
-                text = message,
-                modifier = Modifier.padding(12.dp),
-                color = Color.Black
+            Icon(
+                Icons.AutoMirrored.Filled.Send,
+                contentDescription = "Send Message"
             )
         }
     }

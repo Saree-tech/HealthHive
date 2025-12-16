@@ -1,152 +1,112 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.healthhive
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding // <-- Fixed: Missing import
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold // <-- Fixed: Missing import
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text // <-- Fixed: Missing import
+import androidx.compose.material3.TopAppBar // <-- Fixed: Missing import
+import androidx.compose.runtime.Composable // <-- Fixed: Missing import
+import androidx.compose.ui.Alignment // <-- Fixed: Missing import
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.style.TextAlign // <-- Fixed: Missing import
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
-import com.example.healthhive.ui.screens.LoginScreen
-import com.example.healthhive.viewmodel.SplashViewModel
-import androidx.compose.material3.Text
-// Make sure to import all required screens
 import com.example.healthhive.ui.screens.HomeScreen
-import com.example.healthhive.ui.screens.SplashScreen
-import com.example.healthhive.ui.screens.OnboardingScreen
-import com.example.healthhive.ui.screens.SignUpScreen
-import com.example.healthhive.ui.screens.ForgotPasswordScreen
-import com.example.healthhive.ui.theme.HealthHiveTheme
-
-// 🛑 CRITICAL FIX 1: Import the SymptomCheckerScreen UI file
 import com.example.healthhive.ui.screens.SymptomCheckerScreen
+import com.example.healthhive.ui.theme.HealthHiveTheme
+import com.example.healthhive.viewmodel.HomeViewModel
+import com.example.healthhive.viewmodel.SymptomCheckerViewModel
 
+// 1. Define all Navigation Routes
+sealed class Screen(val route: String) {
+    data object Home : Screen("home")
+    data object LumiChat : Screen("lumi_chat")
+    data object Recommendations : Screen("recommendations")
+    data object Reports : Screen("reports")
+    data object Tips : Screen("tips")
+    data object Settings : Screen("settings")
+    // Add other screens as needed
+}
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             HealthHiveTheme {
-                val navController = rememberNavController()
-                val splashViewModel: SplashViewModel = viewModel()
-                val startDestination by splashViewModel.nextRoute.collectAsState()
-
-                NavHost(
-                    navController = navController,
-                    startDestination = Routes.SPLASH // Starts here
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
                 ) {
-                    // 1. SPLASH SCREEN (Correct)
-                    composable(Routes.SPLASH) {
-                        SplashScreen(
-                            onNavigate = {
-                                val destination = startDestination
-                                if (destination != null) {
-                                    navController.popBackStack()
-                                    navController.navigate(destination)
-                                }
-                            }
-                        )
-                    }
+                    val navController = rememberNavController()
 
-                    // 2. ONBOARDING SCREEN (Correct)
-                    composable(Routes.ONBOARDING) {
-                        val newDestination by splashViewModel.nextRoute.collectAsState()
+                    // ViewModel for the Chat, kept alive across the activity/navigation session
+                    val chatViewModel: SymptomCheckerViewModel = viewModel(
+                        factory = SymptomCheckerViewModel.Factory(applicationContext)
+                    )
 
-                        OnboardingScreen(
-                            onOnboardingComplete = {
-                                splashViewModel.finishOnboarding()
-                            }
-                        )
+                    NavHost(
+                        navController = navController,
+                        startDestination = Screen.Home.route
+                    ) {
+                        // Home Screen definition
+                        composable(Screen.Home.route) {
+                            HomeScreen(
+                                // Provide the universal navigation function
+                                onNavigateTo = { route -> navController.navigate(route) },
 
-                        LaunchedEffect(newDestination) {
-                            if (newDestination != null && newDestination != Routes.ONBOARDING) {
-                                navController.popBackStack()
-                                navController.navigate(newDestination!!)
-                            }
+                                // Provide specific navigation functions for the buttons
+                                onSymptomCheckerClick = { navController.navigate(Screen.LumiChat.route) },
+                                onRecommendationsClick = { navController.navigate(Screen.Recommendations.route) },
+                                onReportsClick = { navController.navigate(Screen.Reports.route) },
+                                onTipsClick = { navController.navigate(Screen.Tips.route) },
+                                onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                                // Use the factory for HomeViewModel
+                                viewModel = viewModel(factory = HomeViewModel.Factory())
+                            )
                         }
+
+                        // Lumi Chat Screen
+                        composable(Screen.LumiChat.route) {
+                            SymptomCheckerScreen(chatViewModel)
+                        }
+
+                        // Placeholder Composables for other routes
+                        composable(Screen.Recommendations.route) { PlaceholderScreen("Recommendations") }
+                        composable(Screen.Reports.route) { PlaceholderScreen("History / Reports") }
+                        composable(Screen.Tips.route) { PlaceholderScreen("Health Tips") }
+                        composable(Screen.Settings.route) { PlaceholderScreen("Settings / Profile") }
                     }
-
-                    // 3. LOGIN SCREEN (Correct)
-                    composable(Routes.LOGIN) {
-                        LoginScreen(
-                            onLoginSuccess = {
-                                navController.navigate(Routes.HOME) {
-                                    popUpTo(Routes.SPLASH) { inclusive = true }
-                                }
-                            },
-                            onSignUpClick = {
-                                navController.navigate(Routes.SIGNUP)
-                            },
-                            onForgotPasswordClick = {
-                                navController.navigate(Routes.FORGOT_PASSWORD)
-                            }
-                        )
-                    }
-
-                    // 4. HOME SCREEN (Ready for VM integration next)
-                    composable(Routes.HOME) {
-                        HomeScreen(
-                            onNavigateTo = { route -> navController.navigate(route) },
-                            onSymptomCheckerClick = {
-                                navController.navigate(Routes.SYMPTOM_CHECKER)
-                            },
-                            onRecommendationsClick = {
-                                navController.navigate(Routes.RECOMMENDATIONS)
-                            },
-                            onReportsClick = {
-                                navController.navigate(Routes.REPORTS)
-                            },
-                            onTipsClick = {
-                                navController.navigate(Routes.TIPS)
-                            },
-                            onSettingsClick = {
-                                navController.navigate(Routes.SETTINGS)
-                            }
-                        )
-                    }
-
-                    // 5. SIGNUP SCREEN (FIXED: onSignUpClick -> onSignUpSuccess)
-                    composable(Routes.SIGNUP) {
-                        SignUpScreen(
-                            onSignUpSuccess = {
-                                // Navigate to HOME upon successful registration
-                                navController.navigate(Routes.HOME) { popUpTo(Routes.SPLASH) { inclusive = true } }
-                            },
-                            onBackToLoginClick = {
-                                navController.popBackStack()
-                            }
-                        )
-                    }
-
-                    // 6. FORGOT PASSWORD SCREEN (FIXED: onSendResetClick -> onSendResetSuccess)
-                    composable(Routes.FORGOT_PASSWORD) {
-                        ForgotPasswordScreen(
-                            onSendResetSuccess = {
-                                // Navigate back to login screen on successful email send
-                                navController.popBackStack(Routes.LOGIN, inclusive = false)
-                            },
-                            onBackToLoginClick = {
-                                navController.popBackStack()
-                            }
-                        )
-                    }
-
-                    // 🛑 CRITICAL FIX 2: Replace the placeholder Text with the actual Composable
-                    composable(Routes.SYMPTOM_CHECKER) { SymptomCheckerScreen() }
-
-                    // 7. FEATURE PLACEHOLDERS (Remaining unchanged)
-                    composable(Routes.RECOMMENDATIONS) { Text("Health Tracker Recommendations Screen is coming soon!") }
-                    composable(Routes.REPORTS) { Text("History / Reports Screen is coming soon!") }
-                    composable(Routes.TIPS) { Text("Health Tips Screen is coming soon!") }
-                    composable(Routes.SETTINGS) { Text("Settings Screen is coming soon!") }
-                    composable(Routes.NOTIFICATIONS) { Text("Notifications Screen is coming soon!") }
                 }
             }
+        }
+    }
+}
+
+// Simple Placeholder Screen for unbuilt navigation targets
+@Composable
+fun PlaceholderScreen(title: String) {
+    Scaffold(
+        topBar = { TopAppBar(title = { Text(title) }) }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier.fillMaxSize().padding(paddingValues),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = "This is the $title Screen. Navigation successful!",
+                textAlign = TextAlign.Center
+            )
         }
     }
 }
