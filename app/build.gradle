@@ -1,11 +1,14 @@
 plugins {
-    id 'com.android.application'
-    id 'org.jetbrains.kotlin.android'
-    id 'org.jetbrains.kotlin.plugin.compose'
-    id 'com.google.gms.google-services' // Required for Firebase
+    // Note: If the versions are NOT defined in the project's root build.gradle,
+    // you must define them here. Assuming they are NOT defined at the root:
+    id 'com.android.application' version '8.2.0' // Explicitly set AGP version
+    id 'org.jetbrains.kotlin.android' version '2.0.0' // Explicitly set Kotlin version
+    // The Compose Compiler plugin (Required for Kotlin 2.0+)
+    id 'org.jetbrains.kotlin.plugin.compose' version '2.0.0' // Explicitly set Compose plugin version
+    id 'com.google.gms.google-services' version '4.4.4' // Explicitly set Google Services version
 }
 
-// 🔑 API Key Property Loading using Groovy syntax
+// Load API Key from local.properties
 def properties = new Properties()
 if (rootProject.file("local.properties").exists()) {
     properties.load(rootProject.file("local.properties").newDataInputStream())
@@ -14,25 +17,23 @@ def geminiApiKey = properties.getProperty("GEMINI_API_KEY", "")
 
 android {
     namespace 'com.example.healthhive'
-    compileSdk 36
+    compileSdk 34 // Stable SDK version
 
-    // 🛑 FIX FOR WARNING: Explicitly enable BuildConfig feature
     buildFeatures {
         buildConfig = true
-        compose true
+        compose = true
     }
-    // ----------------------------------------------------
 
     defaultConfig {
         applicationId "com.example.healthhive"
         minSdk 25
-        targetSdk 36
+        targetSdk 34
         versionCode 1
         versionName "1.0"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
 
-        // Inject the API key into the generated BuildConfig file
+        // Inject the API key into BuildConfig
         buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
     }
 
@@ -48,50 +49,52 @@ android {
         targetCompatibility JavaVersion.VERSION_11
     }
     kotlinOptions {
+        // Ensure JVM Target is set for Kotlin 2.0
         jvmTarget = '11'
     }
 }
 
 dependencies {
-    // 1. CORE ANDROID LIBRARIES
+    // --- Core Android ---
     implementation libs.androidx.core.ktx
     implementation libs.androidx.lifecycle.runtime.ktx
 
-    // 2. JETPACK COMPOSE LIBRARIES (Using BOM for unified versioning)
+    // --- Jetpack Compose (BOM) ---
     implementation platform(libs.androidx.compose.bom)
 
-    // Core Compose Dependencies
+    // UI & Material
+    implementation libs.androidx.compose.ui
+    implementation libs.androidx.compose.ui.graphics
+    implementation libs.androidx.compose.material3
+    implementation "androidx.compose.foundation:foundation"
+    implementation "androidx.compose.material:material-icons-extended"
+
+    // Navigation & Architecture
     implementation libs.androidx.activity.compose
     implementation libs.androidx.lifecycle.viewmodel.compose
     implementation libs.androidx.navigation.compose
 
-    // UI, Graphics, and Material 3
-    implementation libs.androidx.compose.ui
-    implementation libs.androidx.compose.ui.graphics
-    implementation libs.androidx.compose.material3
+    // UPDATED: Use the latest stable version
+    implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3"
 
-    // Critical Compose Foundation Libraries
-    implementation("androidx.compose.foundation:foundation") // Use string for foundation if not in libs.versions.toml
-    implementation("androidx.compose.material:material-icons-extended")
+    // DataStore
+    implementation "androidx.datastore:datastore-preferences:1.1.1" // Updated version
 
-    // 3. MVVM & PERSISTENCE
-    implementation("androidx.lifecycle:lifecycle-viewmodel-ktx:2.7.0") // Keep explicit version if not using BOM for ViewModel
-    implementation("androidx.datastore:datastore-preferences:1.0.0")
+    // --- Coroutines ---
+    // UPDATED: Use the latest stable version
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
+    implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 
-    // Coroutine support (Keep explicit versions)
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3")
-
-    // 4. FIREBASE INTEGRATION
+    // --- Firebase (BOM) ---
     implementation platform("com.google.firebase:firebase-bom:34.6.0")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-analytics")
 
-    // 5. GEMINI API (Keep explicit version)
+    // --- AI / Gemini ---
     implementation("com.google.ai.client.generativeai:generativeai:0.8.0")
 
-    // 6. TESTING LIBRARIES
+    // --- Testing ---
     testImplementation libs.junit
     androidTestImplementation libs.androidx.junit
     androidTestImplementation libs.androidx.espresso.core

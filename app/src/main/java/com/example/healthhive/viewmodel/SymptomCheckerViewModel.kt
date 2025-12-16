@@ -9,7 +9,9 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+// This ViewModel handles the business logic and state management for the Symptom Checker Screen.
 class SymptomCheckerViewModel(
+    // AI service dependency for sending messages and resetting the session
     private val aiService: AIService = AIService()
 ) : ViewModel() {
 
@@ -42,8 +44,8 @@ class SymptomCheckerViewModel(
     }
 
     fun analyzeSymptoms() {
-        // Ensure we don't proceed if already loading or if no symptoms are entered
-        if (_uiState.value.isLoading || _uiState.value.selectedSymptoms.isEmpty()) return
+        // Guard clause to prevent multiple calls or calls with no symptoms
+        if (_uiState.value.isLoading || (_uiState.value.selectedSymptoms.isEmpty() && _uiState.value.symptomInput.isBlank())) return
 
         _uiState.update {
             it.copy(
@@ -53,6 +55,7 @@ class SymptomCheckerViewModel(
             )
         }
 
+        // Construct the prompt by joining all selected symptoms
         val prompt = "Analyze the following list of symptoms: ${_uiState.value.selectedSymptoms.joinToString(", ")}"
 
         viewModelScope.launch {
@@ -66,6 +69,7 @@ class SymptomCheckerViewModel(
                     )
                 }
             } catch (e: Exception) {
+                // Handle exceptions (network failure, API key issues, etc.)
                 _uiState.update {
                     it.copy(
                         result = null,
@@ -78,6 +82,7 @@ class SymptomCheckerViewModel(
     }
 
     fun resetAnalysis() {
+        // Reset the AI session (important for persistent chat history models)
         aiService.resetSession()
         _uiState.update {
             SymptomCheckerUiState(isInitialAnalysis = true) // Reset to initial state

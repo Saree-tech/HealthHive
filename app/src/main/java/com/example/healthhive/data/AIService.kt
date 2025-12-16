@@ -5,6 +5,7 @@ import com.google.ai.client.generativeai.type.content
 import com.google.ai.client.generativeai.Chat
 import com.example.healthhive.BuildConfig
 
+// This class handles all communication with the Gemini API.
 class AIService {
 
     // 1. Assign a name to your assistant (for personality)
@@ -22,7 +23,7 @@ class AIService {
         **Your Core Safety Rules (Non-Negotiable):**
         * You are NOT a doctor. You CANNOT provide a diagnosis or prescription. State this clearly.
         * Prioritize patient safety above all else.
-        * If symptoms indicate a severe or immediate danger (chest pain, severe bleeding, sudden vision loss, signs of stroke/heart attack), interrupt your analysis and instruct the user to call emergency services immediately.
+        * If symptoms indicate a severe or immediate danger (chest pain, severe bleeding, sudden vision loss, signs of stroke/heart attack), interrupt your analysis and instruct the user to call emergency services immediately. 
         
         **Your Analysis Requirements:**
         1.  **Potential Causes:** Provide 2-3 most probable, non-severe potential causes.

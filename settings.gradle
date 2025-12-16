@@ -1,17 +1,18 @@
+// settings.gradle
+
+// settings.gradle
+
 pluginManagement {
     repositories {
-        google {
-            content {
-                includeGroupByRegex("com\\.android.*")
-                includeGroupByRegex("com\\.google.*")
-                includeGroupByRegex("androidx.*")
-            }
-        }
-        mavenCentral()
         gradlePluginPortal()
+        google()
+        mavenCentral()
     }
 }
+// ... rest of settings.gradle
+
 dependencyResolutionManagement {
+    // This mode is standard for projects using version catalogs (libs.versions.toml)
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google()

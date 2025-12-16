@@ -1,4 +1,4 @@
-package com.example.healthhive.ui
+package com.example.healthhive.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -173,7 +173,7 @@ fun ChatInputArea(
                 label = { Text("Type AI symptoms here...") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
-                // 🛑 ABSOLUTE FINAL FIX: Use the parameter-less default colors to bypass the 'enabled' conflict
+                // Using the parameter-less default colors to bypass the dependency conflict
                 colors = OutlinedTextFieldDefaults.colors()
             )
 
@@ -182,18 +182,22 @@ fun ChatInputArea(
             // Send Button: Adds the current input to the selected list and triggers analysis
             FloatingActionButton(
                 onClick = {
+                    val canAnalyze = uiState.selectedSymptoms.isNotEmpty() || uiState.symptomInput.isNotBlank()
+
                     if (uiState.symptomInput.isNotBlank()) {
                         viewModel.addSymptom(uiState.symptomInput.trim())
                     }
-                    if (uiState.selectedSymptoms.isNotEmpty() || uiState.symptomInput.isNotBlank()) {
+                    if (canAnalyze && !uiState.isLoading) {
                         viewModel.analyzeSymptoms()
                     }
                 },
                 modifier = Modifier.size(48.dp),
                 containerColor = LumiPurple,
                 contentColor = Color.White,
-                enabled = (uiState.symptomInput.isNotBlank() || uiState.selectedSymptoms.isNotEmpty()) && !uiState.isLoading
+                // The 'enabled' parameter is removed, fixing the compilation error at line 195
             ) {
+                // Correct: Composable functions (like CircularProgressIndicator and Icon)
+                // must be called directly inside this content lambda block.
                 if (uiState.isLoading) {
                     CircularProgressIndicator(
                         Modifier.size(24.dp),

@@ -23,7 +23,7 @@ import com.example.healthhive.ui.screens.ForgotPasswordScreen
 import com.example.healthhive.ui.theme.HealthHiveTheme
 
 // 🛑 CRITICAL FIX 1: Import the SymptomCheckerScreen UI file
-import com.example.healthhive.ui.SymptomCheckerScreen
+import com.example.healthhive.ui.screens.SymptomCheckerScreen
 
 
 class MainActivity : ComponentActivity() {
