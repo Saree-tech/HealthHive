@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FieldValue
 import com.google.firebase.firestore.FirebaseFirestore
+import com.google.firebase.firestore.PropertyName
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -39,25 +40,34 @@ data class MedicationData(
     val dosage: String = "",
     val time: String = "08:00 AM",
     val datesTaken: List<String> = emptyList(),
-    val recurrence: RecurrenceType = RecurrenceType.DAILY
-)
+    val recurrence: RecurrenceType = RecurrenceType.DAILY,
+    @get:PropertyName("isTaken") @set:PropertyName("isTaken") @JvmField var isTaken: Boolean = false,
+    @get:PropertyName("taken") @set:PropertyName("taken") @JvmField var taken: Boolean = false,
+    @get:PropertyName("dateAdded") @set:PropertyName("dateAdded") var dateAdded: Long = System.currentTimeMillis()
+) {
+    constructor() : this("", "", "", "", "08:00 AM", emptyList(), RecurrenceType.DAILY, false, false, 0L)
+}
 
 data class Appointment(
     val id: String = "",
     val userId: String = "",
     val title: String = "",
+    @get:PropertyName("doctorName") @set:PropertyName("doctorName") var doctorName: String = "",
+    @get:PropertyName("date") @set:PropertyName("date") var date: String = "",
     val dateString: String = "",
     val time: String = "10:00 AM",
     val type: RecurrenceType = RecurrenceType.ONETIME
-)
+) {
+    constructor() : this("", "", "", "", "", "", "10:00 AM", RecurrenceType.ONETIME)
+}
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HealthCalendarScreen(onBack: () -> Unit) {
     val db = FirebaseFirestore.getInstance()
     val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
-    val today = sdf.format(Date())
+    val sdf = remember { SimpleDateFormat("yyyyMMdd", Locale.getDefault()) }
+    val today = remember { sdf.format(Date()) }
 
     var selectedDate by remember { mutableStateOf(today) }
     var medications by remember { mutableStateOf<List<MedicationData>>(emptyList()) }
@@ -65,6 +75,15 @@ fun HealthCalendarScreen(onBack: () -> Unit) {
 
     var isMedSheetOpen by remember { mutableStateOf(false) }
     var isApptSheetOpen by remember { mutableStateOf(false) }
+
+    // Optimization: Filter lists using derivedStateOf to prevent UI lag
+    val dailyAppts by remember(appointments, selectedDate) {
+        derivedStateOf { appointments.filter { isApptVisibleOnDate(it, selectedDate) } }
+    }
+
+    val medicationSplit by remember(medications, selectedDate) {
+        derivedStateOf { medications.partition { it.datesTaken.contains(selectedDate) } }
+    }
 
     DisposableEffect(userId) {
         if (userId.isEmpty()) return@DisposableEffect onDispose {}
@@ -110,7 +129,6 @@ fun HealthCalendarScreen(onBack: () -> Unit) {
             item { ProfessionalDashboard(medications, today) }
             item { CalendarStrip(selectedDate, appointments) { selectedDate = it } }
 
-            val dailyAppts = appointments.filter { isApptVisibleOnDate(it, selectedDate) }
             item { SectionHeader("Scheduled Checkups", dailyAppts.size, Icons.Default.DateRange) }
 
             if (dailyAppts.isEmpty()) {
@@ -123,16 +141,16 @@ fun HealthCalendarScreen(onBack: () -> Unit) {
                 }
             }
 
-            val (taken, pending) = medications.partition { it.datesTaken.contains(selectedDate) }
+            val (takenMeds, pendingMeds) = medicationSplit
             item { SectionHeader("Medication Plan", medications.size, Icons.Default.MedicalServices) }
 
-            items(pending, key = { it.id }) { med ->
+            items(pendingMeds, key = { it.id }) { med ->
                 ProfessionalMedCard(med, false,
                     onToggle = { db.collection("medications").document(med.id).update("datesTaken", FieldValue.arrayUnion(selectedDate)) },
                     onDelete = { db.collection("medications").document(med.id).delete() }
                 )
             }
-            items(taken, key = { it.id }) { med ->
+            items(takenMeds, key = { it.id }) { med ->
                 ProfessionalMedCard(med, true,
                     onToggle = { db.collection("medications").document(med.id).update("datesTaken", FieldValue.arrayRemove(selectedDate)) },
                     onDelete = { db.collection("medications").document(med.id).delete() }
@@ -146,99 +164,33 @@ fun HealthCalendarScreen(onBack: () -> Unit) {
     }
 }
 
-// --- LOGIC ---
-
-/**
- * FIXED: Added null/empty check and try-catch to prevent java.text.ParseException
- */
-fun isApptVisibleOnDate(appt: Appointment, targetDate: String): Boolean {
-    if (appt.dateString.isBlank() || targetDate.isBlank()) return false
-
-    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
-    return try {
-        val target = sdf.parse(targetDate) ?: return false
-        val base = sdf.parse(appt.dateString) ?: return false
-        if (target.before(base)) return false
-
-        when (appt.type) {
-            RecurrenceType.ONETIME, RecurrenceType.ONE_TIME -> appt.dateString == targetDate
-            RecurrenceType.WEEKLY -> {
-                val calT = Calendar.getInstance().apply { time = target }
-                val calB = Calendar.getInstance().apply { time = base }
-                calT.get(Calendar.DAY_OF_WEEK) == calB.get(Calendar.DAY_OF_WEEK)
-            }
-            RecurrenceType.MONTHLY -> {
-                val calT = Calendar.getInstance().apply { time = target }
-                val calB = Calendar.getInstance().apply { time = base }
-                calT.get(Calendar.DAY_OF_MONTH) == calB.get(Calendar.DAY_OF_MONTH)
-            }
-            RecurrenceType.DAILY -> true
-        }
-    } catch (e: Exception) {
-        false
-    }
-}
-
 // --- UI COMPONENTS ---
 
 @Composable
-fun EmptyStateHint(text: String) {
-    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Icon(imageVector = Icons.Outlined.Info, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
-            Text(text, color = Color.Gray, fontSize = 14.sp, textAlign = TextAlign.Center)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun AddMedSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String) {
-    var name by remember { mutableStateOf("") }
-    var dose by remember { mutableStateOf("") }
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(24.dp).padding(bottom = 32.dp).navigationBarsPadding()) {
-            Text("New Medication", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Medicine Name") }, modifier = Modifier.fillMaxWidth())
-            Spacer(Modifier.height(12.dp))
-            OutlinedTextField(value = dose, onValueChange = { dose = it }, label = { Text("Dose") }, modifier = Modifier.fillMaxWidth())
-            Button(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        val id = db.collection("medications").document().id
-                        db.collection("medications").document(id).set(MedicationData(id, userId, name, dose))
-                        onDismiss()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(top = 24.dp).height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
-            ) { Text("Save Medication") }
-        }
-    }
-}
-
-@Composable
 fun ProfessionalDashboard(meds: List<MedicationData>, today: String) {
-    val completed = meds.count { it.datesTaken.contains(today) }
-    val total = meds.size
-    val progress = if (total > 0) completed.toFloat() / total else 0f
+    val progressData = remember(meds, today) {
+        val completed = meds.count { it.datesTaken.contains(today) }
+        val total = meds.size
+        val progress = if (total > 0) completed.toFloat() / total else 0f
+        Pair(completed, progress)
+    }
 
     Card(Modifier.padding(16.dp), shape = RoundedCornerShape(28.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1B4332))) {
         Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text("Daily Progress", color = Color.White.copy(0.7f), fontSize = 14.sp)
-                Text("$completed / $total Meds", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+                Text("${progressData.first} / ${meds.size} Meds", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             }
-            CircularProgressIndicator(progress = { progress }, color = Color(0xFFB7E4C7), trackColor = Color.White.copy(0.1f))
+            CircularProgressIndicator(progress = { progressData.second }, color = Color(0xFFB7E4C7), trackColor = Color.White.copy(0.1f))
         }
     }
 }
 
 @Composable
 fun CalendarStrip(selectedDate: String, appointments: List<Appointment>, onSelect: (String) -> Unit) {
-    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+    val sdf = remember { SimpleDateFormat("yyyyMMdd", Locale.getDefault()) }
+    val dayFormat = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
+    val dateFormat = remember { SimpleDateFormat("dd", Locale.getDefault()) }
     val dates = remember { List(14) { i -> Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, i) }.time } }
 
     LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -253,10 +205,29 @@ fun CalendarStrip(selectedDate: String, appointments: List<Appointment>, onSelec
                     .clickable { onSelect(dStr) }.padding(8.dp),
                 horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center
             ) {
-                Text(SimpleDateFormat("EEE", Locale.getDefault()).format(date), color = if (isSelected) Color.White.copy(0.7f) else Color.Gray, fontSize = 12.sp)
-                Text(SimpleDateFormat("dd", Locale.getDefault()).format(date), color = if (isSelected) Color.White else Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(dayFormat.format(date), color = if (isSelected) Color.White.copy(0.7f) else Color.Gray, fontSize = 12.sp)
+                Text(dateFormat.format(date), color = if (isSelected) Color.White else Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 if (hasEvent) Box(Modifier.size(4.dp).background(if (isSelected) Color.White else Color(0xFF2D6A4F), CircleShape))
             }
+        }
+    }
+}
+
+@Composable
+fun SectionHeader(title: String, count: Int, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Icon(imageVector = icon, contentDescription = null, Modifier.size(18.dp), tint = Color.Gray)
+        Text(title, Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Gray)
+        if (count > 0) Text("$count", color = Color.Gray, fontSize = 12.sp)
+    }
+}
+
+@Composable
+fun EmptyStateHint(text: String) {
+    Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Icon(imageVector = Icons.Outlined.Info, contentDescription = null, tint = Color.LightGray, modifier = Modifier.size(40.dp))
+            Text(text, color = Color.Gray, fontSize = 14.sp, textAlign = TextAlign.Center)
         }
     }
 }
@@ -292,12 +263,31 @@ fun ProfessionalApptCard(appt: Appointment, onDismiss: () -> Unit) {
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SectionHeader(title: String, count: Int, icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(imageVector = icon, contentDescription = null, Modifier.size(18.dp), tint = Color.Gray)
-        Text(title, Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Gray)
-        if (count > 0) Text("$count", color = Color.Gray, fontSize = 12.sp)
+fun AddMedSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String) {
+    var name by remember { mutableStateOf("") }
+    var dose by remember { mutableStateOf("") }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(Modifier.padding(24.dp).padding(bottom = 32.dp).navigationBarsPadding()) {
+            Text("New Medication", fontSize = 20.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Medicine Name") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(12.dp))
+            OutlinedTextField(value = dose, onValueChange = { dose = it }, label = { Text("Dose") }, modifier = Modifier.fillMaxWidth())
+            Button(
+                onClick = {
+                    if (name.isNotBlank()) {
+                        val id = db.collection("medications").document().id
+                        db.collection("medications").document(id).set(MedicationData(id, userId, name, dose))
+                        onDismiss()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp).height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
+            ) { Text("Save Medication") }
+        }
     }
 }
 
@@ -340,10 +330,41 @@ fun AddApptSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String, s
             Button(onClick = {
                 if (title.isNotBlank()) {
                     val id = db.collection("appointments").document().id
-                    db.collection("appointments").document(id).set(Appointment(id, userId, title, selectedDate, time, type))
+                    db.collection("appointments").document(id).set(Appointment(id, userId, title, "", selectedDate, "", time, type))
                     onDismiss()
                 }
             }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))) { Text("Schedule") }
         }
+    }
+}
+
+// --- LOGIC ---
+
+fun isApptVisibleOnDate(appt: Appointment, targetDate: String): Boolean {
+    val actualDateStr = if (appt.date.isNotBlank()) appt.date else appt.dateString
+    if (actualDateStr.isBlank() || targetDate.isBlank()) return false
+
+    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+    return try {
+        val target = sdf.parse(targetDate) ?: return false
+        val base = sdf.parse(actualDateStr) ?: return false
+        if (target.before(base)) return false
+
+        when (appt.type) {
+            RecurrenceType.ONETIME, RecurrenceType.ONE_TIME -> actualDateStr == targetDate
+            RecurrenceType.WEEKLY -> {
+                val calT = Calendar.getInstance().apply { time = target }
+                val calB = Calendar.getInstance().apply { time = base }
+                calT.get(Calendar.DAY_OF_WEEK) == calB.get(Calendar.DAY_OF_WEEK)
+            }
+            RecurrenceType.MONTHLY -> {
+                val calT = Calendar.getInstance().apply { time = target }
+                val calB = Calendar.getInstance().apply { time = base }
+                calT.get(Calendar.DAY_OF_MONTH) == calB.get(Calendar.DAY_OF_MONTH)
+            }
+            RecurrenceType.DAILY -> true
+        }
+    } catch (e: Exception) {
+        false
     }
 }

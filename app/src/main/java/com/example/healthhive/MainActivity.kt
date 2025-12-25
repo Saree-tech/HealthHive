@@ -12,16 +12,15 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -30,7 +29,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -39,14 +37,14 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import com.example.healthhive.data.AuthService
-import com.example.healthhive.ui.screens.* import com.example.healthhive.ui.theme.HealthHiveTheme
+import com.example.healthhive.ui.screens.*
+import com.example.healthhive.ui.theme.HealthHiveTheme
 import com.example.healthhive.viewmodel.HomeViewModel
 import com.example.healthhive.viewmodel.SymptomCheckerViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-// --- NAVIGATION ROUTES ---
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
     data object Onboarding : Screen("onboarding")
@@ -74,7 +72,7 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val context = LocalContext.current
 
-                    // Ensure specific ViewModel type is inferred
+                    // Fixed: Factory is now a function call
                     val chatViewModel: SymptomCheckerViewModel = viewModel(
                         factory = SymptomCheckerViewModel.Factory(applicationContext)
                     )
@@ -102,6 +100,7 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(Screen.Home.route) {
+                            // Assumes HomeViewModel has a similar companion object Factory()
                             val homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory())
 
                             HomeScreen(
@@ -123,7 +122,6 @@ class MainActivity : ComponentActivity() {
                             HealthCalendarScreen(onBack = { navController.popBackStack() })
                         }
 
-                        // Placeholder routes with explicit NavController passing
                         composable(Screen.Recommendations.route) { PlaceholderScreen("Recommendations", navController) }
                         composable(Screen.Reports.route) { PlaceholderScreen("History / Reports", navController) }
                         composable(Screen.Tips.route) { PlaceholderScreen("Health Tips", navController) }
@@ -135,18 +133,15 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- OPTIMIZED SPLASH SCREEN ---
 @Composable
 fun SplashScreen(navController: NavController, authService: AuthService) {
     val context = LocalContext.current
     val infiniteTransition = rememberInfiniteTransition(label = "splash")
-
     val floatAnim by infiniteTransition.animateFloat(
         initialValue = -10f, targetValue = 10f,
         animationSpec = infiniteRepeatable(tween(2500, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "float"
     )
-
     val shimmerTranslate by infiniteTransition.animateFloat(
         initialValue = 0f, targetValue = 1500f,
         animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing)),
@@ -183,26 +178,16 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
         ) {
             Image(painter = painterResource(id = R.drawable.logo), contentDescription = "Logo", modifier = Modifier.size(130.dp))
             Spacer(modifier = Modifier.height(24.dp))
-
             val shimmerBrush = Brush.linearGradient(
                 colors = listOf(Color(0xFFD8F3DC), Color(0xFF74C69D), Color(0xFFD8F3DC)),
                 start = Offset(shimmerTranslate, shimmerTranslate),
                 end = Offset(shimmerTranslate + 300f, shimmerTranslate + 300f)
             )
-
-            Text(
-                "HealthHive",
-                style = MaterialTheme.typography.displayMedium.copy(
-                    fontWeight = FontWeight.Black,
-                    brush = shimmerBrush,
-                    letterSpacing = 2.sp
-                )
-            )
+            Text("HealthHive", style = MaterialTheme.typography.displayMedium.copy(fontWeight = FontWeight.Black, brush = shimmerBrush, letterSpacing = 2.sp))
         }
     }
 }
 
-// --- AUTHENTICATION SCREEN ---
 @Composable
 fun AuthScreen(navController: NavController, authService: AuthService) {
     var isLogin by remember { mutableStateOf(true) }
@@ -213,49 +198,17 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.fillMaxSize().padding(30.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        Text(
-            text = if (isLogin) "Welcome Back" else "Create Account",
-            style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
-            color = Color(0xFF1B4332)
-        )
+    Column(modifier = Modifier.fillMaxSize().padding(30.dp), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+        Text(text = if (isLogin) "Welcome Back" else "Create Account", style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
         Spacer(Modifier.height(32.dp))
-
         if (!isLogin) {
-            OutlinedTextField(
-                value = userName,
-                onValueChange = { userName = it },
-                label = { Text("Full Name") },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
-            )
+            OutlinedTextField(value = userName, onValueChange = { userName = it }, label = { Text("Full Name") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
             Spacer(Modifier.height(12.dp))
         }
-
-        OutlinedTextField(
-            value = email,
-            onValueChange = { email = it },
-            label = { Text("Email Address") },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        )
+        OutlinedTextField(value = email, onValueChange = { email = it }, label = { Text("Email Address") }, modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(Modifier.height(12.dp))
-
-        OutlinedTextField(
-            value = password,
-            onValueChange = { password = it },
-            label = { Text("Password") },
-            visualTransformation = PasswordVisualTransformation(),
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
-        )
+        OutlinedTextField(value = password, onValueChange = { password = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth(), shape = RoundedCornerShape(12.dp))
         Spacer(Modifier.height(32.dp))
-
         if (isLoading) {
             CircularProgressIndicator(color = Color(0xFF2D6A4F))
         } else {
@@ -264,28 +217,18 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
                     isLoading = true
                     scope.launch {
                         try {
-                            if (isLogin) {
-                                authService.login(email, password)
-                            } else {
-                                authService.signup(email, password, userName)
-                            }
-                            navController.navigate(Screen.Home.route) {
-                                popUpTo(Screen.Auth.route) { inclusive = true }
-                            }
+                            if (isLogin) authService.login(email, password)
+                            else authService.signup(email, password, userName)
+                            navController.navigate(Screen.Home.route) { popUpTo(Screen.Auth.route) { inclusive = true } }
                         } catch (e: Exception) {
                             Toast.makeText(context, e.localizedMessage ?: "Error", Toast.LENGTH_SHORT).show()
-                        } finally {
-                            isLoading = false
-                        }
+                        } finally { isLoading = false }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F))
-            ) {
-                Text(if (isLogin) "Login" else "Get Started")
-            }
-
+            ) { Text(if (isLogin) "Login" else "Get Started") }
             TextButton(onClick = { isLogin = !isLogin }) {
                 Text(if (isLogin) "New to HealthHive? Sign Up" else "Already have an account? Login", color = Color(0xFF2D6A4F))
             }
@@ -293,7 +236,6 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
     }
 }
 
-// --- PLACEHOLDER SCREEN COMPONENT ---
 @Composable
 fun PlaceholderScreen(title: String, navController: NavController) {
     Scaffold(

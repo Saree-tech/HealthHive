@@ -3,6 +3,8 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'com.google.gms.google-services'
     id 'org.jetbrains.kotlin.plugin.compose'
+    // ADDED: Apply the serialization plugin
+    id 'org.jetbrains.kotlin.plugin.serialization'
 }
 
 def properties = new Properties()
@@ -31,9 +33,6 @@ android {
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
     }
-
-    // Since we are using Kotlin 2.1.0, composeOptions is no longer needed
-    // You can leave it empty or delete it.
 
     buildTypes {
         release {
@@ -80,6 +79,9 @@ dependencies {
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
+
+    // Serialization (ADDED: Required for the Gemini SDK to parse responses)
+    implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
 
     // Firebase (BOM)
     implementation platform("com.google.firebase:firebase-bom:34.6.0")
