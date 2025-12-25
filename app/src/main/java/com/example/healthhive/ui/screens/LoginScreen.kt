@@ -1,162 +1,229 @@
-// File: com/example/healthhive/ui/screens/LoginScreen.kt (UPDATED WITH MVVM)
-
 package com.example.healthhive.ui.screens
 
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.healthhive.R
 import com.example.healthhive.viewmodel.LoginViewModel
 import com.example.healthhive.viewmodel.LoginUiState
-import kotlinx.coroutines.flow.collectLatest
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
-    onLoginSuccess: () -> Unit, // Renamed for clarity: now handles successful auth
+    onLoginSuccess: () -> Unit,
     onSignUpClick: () -> Unit,
-    onForgotPasswordClick: () -> Unit,
-    // Inject the ViewModel
     viewModel: LoginViewModel = viewModel()
 ) {
-    // Collect the UI state from the ViewModel
     val uiState: LoginUiState by viewModel.uiState.collectAsState()
-
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var showForgotDialog by remember { mutableStateOf(false) }
+    var resetEmail by remember { mutableStateOf("") }
 
-    // --- EFFECT HANDLING ---
-
-    // 1. Navigation on Success
+    // Navigation on Success
     LaunchedEffect(uiState.isLoginSuccessful) {
         if (uiState.isLoginSuccessful) {
-            // Reset state to avoid re-triggering navigation if user returns
             viewModel.resetUiState()
             onLoginSuccess()
         }
     }
 
-    // 2. Error Display (using Snackbar)
     val snackbarHostState = remember { SnackbarHostState() }
-    val context = LocalContext.current
 
     LaunchedEffect(uiState.error) {
-        uiState.error?.let { errorMessage ->
-            // Show error message and then clear it in the ViewModel
-            snackbarHostState.showSnackbar(
-                message = errorMessage,
-                actionLabel = "Dismiss"
-            )
+        uiState.error?.let {
+            snackbarHostState.showSnackbar(it)
             viewModel.resetUiState()
         }
     }
 
+    // Modern Medical Gradient
+    val backgroundGradient = Brush.verticalGradient(
+        colors = listOf(Color(0xFFF0F9F9), Color(0xFFFFFFFF))
+    )
 
-    // --- UI STRUCTURE ---
-    Scaffold(snackbarHost = { SnackbarHost(snackbarHostState) }) { paddingValues ->
-        Column(
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = Color.Transparent
+    ) { paddingValues ->
+        Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues) // Apply padding from Scaffold
-                .padding(horizontal = 24.dp)
-                .imePadding(),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .background(brush = backgroundGradient)
+                .padding(paddingValues)
         ) {
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 1. Logo
-            Image(
-                painter = painterResource(id = R.drawable.logo),
-                contentDescription = "HealthHive Logo",
-                modifier = Modifier.size(150.dp)
-            )
-
-            Spacer(modifier = Modifier.height(48.dp))
-
-            // 2. Email Field
-            OutlinedTextField(
-                value = email,
-                onValueChange = { email = it },
-                label = { Text("Email") },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                enabled = !uiState.isLoading, // Disable when loading
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 3. Password Field
-            OutlinedTextField(
-                value = password,
-                onValueChange = { password = it },
-                label = { Text("Password") },
-                visualTransformation = PasswordVisualTransformation(),
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-                enabled = !uiState.isLoading, // Disable when loading
-                modifier = Modifier.fillMaxWidth()
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // 4. Login Button
-            Button(
-                onClick = {
-                    // Call the ViewModel's login function
-                    viewModel.login(email, password)
-                },
-                enabled = !uiState.isLoading && email.isNotBlank() && password.isNotBlank(),
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(50.dp)
+                    .fillMaxSize()
+                    .padding(horizontal = 30.dp)
+                    .imePadding(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
             ) {
-                if (uiState.isLoading) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(24.dp)
+                // 1. Branding Header
+                Image(
+                    painter = painterResource(id = R.drawable.logo),
+                    contentDescription = "Logo",
+                    modifier = Modifier.size(120.dp)
+                )
+
+                Text(
+                    text = "Welcome Back",
+                    style = MaterialTheme.typography.headlineMedium.copy(
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color(0xFF1B4332)
                     )
-                } else {
-                    Text("Login")
+                )
+
+                Text(
+                    text = "Log in to continue your wellness journey",
+                    style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
+                )
+
+                Spacer(modifier = Modifier.height(40.dp))
+
+                // 2. Email Input
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    placeholder = { Text("Email Address") },
+                    leadingIcon = { Icon(Icons.Default.Email, contentDescription = null, tint = Color(0xFF2D6A4F)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF2D6A4F),
+                        unfocusedBorderColor = Color(0xFFE0E0E0),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    singleLine = true
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                // 3. Password Input
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    placeholder = { Text("Password") },
+                    leadingIcon = { Icon(Icons.Default.Lock, contentDescription = null, tint = Color(0xFF2D6A4F)) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF2D6A4F),
+                        unfocusedBorderColor = Color(0xFFE0E0E0),
+                        focusedContainerColor = Color.White,
+                        unfocusedContainerColor = Color.White
+                    ),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                    singleLine = true
+                )
+
+                // 4. Forgot Password Right Aligned
+                Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
+                    Text(
+                        text = "Forgot Password?",
+                        modifier = Modifier
+                            .padding(vertical = 12.dp)
+                            .clickable { showForgotDialog = true },
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF2D6A4F),
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                // 5. Login Button
+                Button(
+                    onClick = { viewModel.login(email, password) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F)),
+                    enabled = !uiState.isLoading
+                ) {
+                    if (uiState.isLoading) {
+                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                    } else {
+                        Text("Login", fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(32.dp))
+
+                // 6. Sign Up Footer
+                Row {
+                    Text("Don't have an account? ", color = Color.Gray)
+                    Text(
+                        text = "Sign Up",
+                        modifier = Modifier.clickable { onSignUpClick() },
+                        color = Color(0xFF2D6A4F),
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 5. Forgot Password Link
-            Text(
-                text = "Forgot your password?",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable(onClick = onForgotPasswordClick)
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // 6. Don't Have an Account Link
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "Do not have an account? ",
-                    style = MaterialTheme.typography.bodyMedium
-                )
-                Text(
-                    text = "Sign Up",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.clickable(onClick = onSignUpClick)
-                )
-            }
         }
+    }
+
+    // --- FORGOT PASSWORD DIALOG ---
+    if (showForgotDialog) {
+        AlertDialog(
+            onDismissRequest = { showForgotDialog = false },
+            title = { Text("Reset Password", fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Enter your email to receive a password reset link.")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = resetEmail,
+                        onValueChange = { resetEmail = it },
+                        label = { Text("Email") },
+                        shape = RoundedCornerShape(12.dp)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        // Add viewModel.forgotPassword(resetEmail) here later
+                        showForgotDialog = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F))
+                ) {
+                    Text("Send Link")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showForgotDialog = false }) {
+                    Text("Cancel", color = Color.Gray)
+                }
+            },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = Color.White
+        )
     }
 }

@@ -18,10 +18,10 @@ import com.example.healthhive.viewmodel.SymptomCheckerViewModel
 import com.google.firebase.auth.FirebaseAuth
 import kotlinx.coroutines.delay
 
-// Add Splash to your existing Screen class logic
+// Assuming AuthScreen is for internal NavGraph logic
 sealed class AuthScreen(val route: String) {
     data object Splash : AuthScreen("splash")
-    data object Login : AuthScreen("login") // You'll need a Login screen later
+    data object Login : AuthScreen("login")
 }
 
 @Composable
@@ -33,7 +33,7 @@ fun SetupNavGraph(
         navController = navController,
         startDestination = AuthScreen.Splash.route
     ) {
-        // 1. Splash Screen (The Logic Fix)
+        // 1. Splash Screen
         composable(AuthScreen.Splash.route) {
             val auth = FirebaseAuth.getInstance()
             LaunchedEffect(Unit) {
@@ -43,9 +43,10 @@ fun SetupNavGraph(
                         popUpTo(AuthScreen.Splash.route) { inclusive = true }
                     }
                 } else {
-                    // If you don't have a Login screen yet, you can send to Home
-                    // but it will show the error. Ideally, send to Login.
-                    navController.navigate(Screen.Home.route)
+                    // Navigate to Home as fallback or Login if created
+                    navController.navigate(Screen.Home.route) {
+                        popUpTo(AuthScreen.Splash.route) { inclusive = true }
+                    }
                 }
             }
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -56,7 +57,8 @@ fun SetupNavGraph(
         // 2. Home Screen
         composable(Screen.Home.route) {
             HomeScreen(
-                onNavigateTo = { route -> navController.navigate(route) },
+                // Explicitly typing 'route' to fix inference issues
+                onNavigateTo = { route: String -> navController.navigate(route) },
                 onSymptomCheckerClick = { navController.navigate(Screen.LumiChat.route) },
                 onRecommendationsClick = { navController.navigate(Screen.Recommendations.route) },
                 onReportsClick = { navController.navigate(Screen.Reports.route) },
@@ -66,11 +68,25 @@ fun SetupNavGraph(
             )
         }
 
-        // 3. Other Screens
-        composable(Screen.LumiChat.route) { SymptomCheckerScreen(chatViewModel) }
-        composable(Screen.Recommendations.route) { PlaceholderScreen("Recommendations") }
-        composable(Screen.Reports.route) { PlaceholderScreen("History / Reports") }
-        composable(Screen.Tips.route) { PlaceholderScreen("Health Tips") }
-        composable(Screen.Settings.route) { PlaceholderScreen("Settings / Profile") }
+        // 3. Other Screens (Passing navController to fix the parameter error)
+        composable(Screen.LumiChat.route) {
+            SymptomCheckerScreen(chatViewModel)
+        }
+
+        composable(Screen.Recommendations.route) {
+            PlaceholderScreen("Recommendations", navController)
+        }
+
+        composable(Screen.Reports.route) {
+            PlaceholderScreen("History / Reports", navController)
+        }
+
+        composable(Screen.Tips.route) {
+            PlaceholderScreen("Health Tips", navController)
+        }
+
+        composable(Screen.Settings.route) {
+            PlaceholderScreen("Settings / Profile", navController)
+        }
     }
 }

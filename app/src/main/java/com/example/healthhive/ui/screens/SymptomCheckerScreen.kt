@@ -1,130 +1,200 @@
 package com.example.healthhive.ui.screens
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.Image
+import androidx.compose.animation.*
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.healthhive.R
-import com.example.healthhive.ui.theme.*
 import com.example.healthhive.viewmodel.ChatMessage
 import com.example.healthhive.viewmodel.SymptomCheckerViewModel
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
-// IMPORTANT: Ensure the following lines are NOT present:
-// import com.google.accompanist.insets.LocalWindowInsets
-// import com.google.accompanist.insets.imePadding // This is why 'imePadding' failed earlier
-// import com.google.accompanist.insets.navigationBarsWithImePadding // This is the current error
-// >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SymptomCheckerScreen(
-    viewModel: SymptomCheckerViewModel = viewModel()
+    viewModel: SymptomCheckerViewModel = viewModel(),
+    onBackClick: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val assistantName = viewModel.getAssistantName()
+    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
+    val scope = rememberCoroutineScope()
     val listState = rememberLazyListState()
-    val coroutineScope = rememberCoroutineScope()
 
-    // 1. Detect Keyboard Visibility (FIXED: Using native Compose Insets API)
-    // The error 'Function invocation 'bottom()' expected' is solved by using getBottom(density)
-    val isKeyboardVisible = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+    val lamiGreen = Color(0xFF2D6A4F)
+    val chatBg = Color(0xFFF8FAF9)
 
-    // Scroll to the latest message whenever chat history updates
     LaunchedEffect(uiState.chatHistory.size) {
         if (uiState.chatHistory.isNotEmpty()) {
-            coroutineScope.launch {
-                listState.animateScrollToItem(uiState.chatHistory.lastIndex)
-            }
+            listState.animateScrollToItem(uiState.chatHistory.lastIndex)
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Chat with $assistantName") },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = PrimaryBlue)
-            )
-        },
-        bottomBar = {
-            ChatInput(
-                messageInput = uiState.messageInput,
-                onInputChanged = viewModel::updateMessageInput,
-                onSend = { viewModel.sendMessage(uiState.messageInput) },
-                isLoading = uiState.isLoading
-            )
-        },
-        modifier = Modifier.fillMaxSize()
-            // FIXED: Using native WindowInsets padding (resolves navigationBarsWithImePadding error)
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-    ) { paddingValues ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                // FIXED: Using native imePadding
-                .imePadding()
-        ) {
-            // 2. Logo/Intro Screen that disappears when the keyboard appears
-            AnimatedVisibility(
-                visible = !isKeyboardVisible && uiState.chatHistory.size <= 1,
-                enter = fadeIn(),
-                exit = fadeOut(),
+    ModalNavigationDrawer(
+        drawerState = drawerState,
+        drawerContent = {
+            ModalDrawerSheet(
+                modifier = Modifier.width(300.dp)
+                // Removed direct containerColor, ModalDrawerSheet uses defaults or specific surface colors
             ) {
-                IntroScreen(assistantName)
-            }
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    "Chat History",
+                    modifier = Modifier.padding(16.dp),
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
 
-            // 3. Chat Log
-            LazyColumn(
-                state = listState,
+                NavigationDrawerItem(
+                    label = { Text("Start New Chat", fontWeight = FontWeight.Bold) },
+                    selected = false,
+                    onClick = {
+                        viewModel.resetAnalysis()
+                        scope.launch { drawerState.close() }
+                    },
+                    icon = { Icon(Icons.Default.Add, null) },
+                    modifier = Modifier.padding(horizontal = 12.dp),
+                    colors = NavigationDrawerItemDefaults.colors(
+                        unselectedContainerColor = Color(0xFFE7F5EC),
+                        unselectedIconColor = lamiGreen,
+                        unselectedTextColor = lamiGreen
+                    )
+                )
+
+                HorizontalDivider(Modifier.padding(vertical = 8.dp))
+
+                LazyColumn(modifier = Modifier.fillMaxSize()) {
+                    // Mock history - this will later be powered by your database/ViewModel
+                    items(listOf("Symptom Check - Today", "Headache Analysis - Dec 21")) { title ->
+                        NavigationDrawerItem(
+                            label = { Text(title) },
+                            selected = false,
+                            onClick = { scope.launch { drawerState.close() } },
+                            icon = { Icon(Icons.AutoMirrored.Filled.Notes, null, tint = Color.Gray) },
+                            modifier = Modifier.padding(horizontal = 12.dp)
+                        )
+                    }
+                }
+            }
+        }
+    ) {
+        Scaffold(
+            topBar = {
+                CenterAlignedTopAppBar(
+                    title = {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Text("Lumi AI", style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold))
+                            Text("Online", style = MaterialTheme.typography.labelSmall.copy(color = lamiGreen))
+                        }
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
+                            Icon(Icons.Default.Menu, contentDescription = "History")
+                        }
+                    },
+                    actions = {
+                        IconButton(onClick = { viewModel.resetAnalysis() }) {
+                            Icon(Icons.Default.Add, contentDescription = "New Chat", tint = lamiGreen)
+                        }
+                    },
+                    // FIXED: Properly applying colors through the colors parameter
+                    colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                        containerColor = Color.White,
+                        scrolledContainerColor = Color.White,
+                        navigationIconContentColor = Color.Black,
+                        titleContentColor = Color.Black,
+                        actionIconContentColor = lamiGreen
+                    )
+                )
+            }
+        ) { paddingValues ->
+            Column(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                verticalArrangement = Arrangement.Bottom
+                    .fillMaxSize()
+                    .background(chatBg)
+                    .padding(paddingValues)
+                    .imePadding()
             ) {
-                items(uiState.chatHistory) { message ->
-                    ChatBubble(message = message, assistantName = assistantName)
-                }
+                Box(modifier = Modifier.weight(1f)) {
+                    if (uiState.chatHistory.isEmpty()) {
+                        LumiEmptyState()
+                    }
 
-                // Add loading indicator as the last item
-                if (uiState.isLoading) {
-                    item { LoadingBubble() }
-                }
-            }
-
-            // 4. Reset Button (Optional)
-            if (uiState.isAnalysisComplete) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    OutlinedButton(
-                        onClick = viewModel::resetAnalysis,
-                        enabled = !uiState.isLoading,
-                        shape = RoundedCornerShape(8.dp)
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        Text("Start New Symptom Check")
+                        items(uiState.chatHistory) { message ->
+                            ModernChatBubble(message)
+                        }
+                        if (uiState.isLoading) {
+                            item { TypingIndicator() }
+                        }
+                    }
+                }
+
+                // Floating Input Bar
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(28.dp),
+                    color = Color.White,
+                    shadowElevation = 4.dp
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        TextField(
+                            value = uiState.messageInput,
+                            onValueChange = viewModel::updateMessageInput,
+                            placeholder = { Text("Ask Lumi anything...") },
+                            modifier = Modifier.weight(1f),
+                            colors = TextFieldDefaults.colors(
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent,
+                                disabledContainerColor = Color.Transparent,
+                                focusedIndicatorColor = Color.Transparent,
+                                unfocusedIndicatorColor = Color.Transparent
+                            ),
+                            maxLines = 4
+                        )
+
+                        IconButton(
+                            onClick = { viewModel.sendMessage(uiState.messageInput) },
+                            enabled = uiState.messageInput.isNotBlank() && !uiState.isLoading,
+                            modifier = Modifier
+                                .clip(CircleShape)
+                                .background(if (uiState.messageInput.isNotBlank()) lamiGreen else Color.LightGray)
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.Send,
+                                contentDescription = "Send",
+                                tint = Color.White,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        }
                     }
                 }
             }
@@ -133,159 +203,77 @@ fun SymptomCheckerScreen(
 }
 
 @Composable
-fun IntroScreen(assistantName: String) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 250.dp, max = 300.dp)
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
-    ) {
-        // NOTE: Check your R.drawable resource name!
-        Image(
-            painter = painterResource(id = R.drawable.assistant_logo),
-            contentDescription = "Assistant Logo",
-            modifier = Modifier.size(80.dp)
-        )
-        Spacer(modifier = Modifier.height(16.dp))
-        Text(
-            text = "Hey! I'm $assistantName, your AI Health Assistant",
-            style = MaterialTheme.typography.titleLarge,
-            color = PrimaryBlue,
-            fontWeight = FontWeight.Bold
-        )
-        Text(
-            text = "Ready to help you, right here.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = Color.Gray,
-            modifier = Modifier.padding(top = 4.dp)
-        )
-    }
-}
+fun ModernChatBubble(message: ChatMessage) {
+    val isUser = message.isUser
+    val alignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+    val bubbleColor = if (isUser) Color(0xFF2D6A4F) else Color.White
+    val textColor = if (isUser) Color.White else Color(0xFF1B4332)
 
-@Composable
-fun ChatBubble(message: ChatMessage, assistantName: String) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start
-    ) {
-        if (!message.isUser) {
-            // Assistant Icon (Lumi)
-            Box(
-                modifier = Modifier
-                    .size(32.dp)
-                    .clip(RoundedCornerShape(8.dp))
-                    .background(Color.LightGray.copy(alpha = 0.5f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(assistantName.first().toString(), fontSize = 16.sp, color = DarkTeal)
-            }
-            Spacer(modifier = Modifier.width(8.dp))
-        }
-
-        val backgroundColor = if (message.isUser) PrimaryBlue else LightTeal
-        val contentColor = if (message.isUser) Color.White else DarkTeal
-
-        // Chat Bubble Content
-        Card(
+    Box(modifier = Modifier.fillMaxWidth(), contentAlignment = alignment) {
+        Surface(
             shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (message.isUser) 16.dp else 4.dp,
-                bottomEnd = if (message.isUser) 4.dp else 16.dp
+                topStart = 20.dp,
+                topEnd = 20.dp,
+                bottomStart = if (isUser) 20.dp else 4.dp,
+                bottomEnd = if (isUser) 4.dp else 20.dp
             ),
-            colors = CardDefaults.cardColors(containerColor = backgroundColor),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+            color = bubbleColor,
+            shadowElevation = if (isUser) 2.dp else 1.dp
         ) {
             Text(
                 text = message.text,
-                color = contentColor,
-                modifier = Modifier.padding(10.dp),
-                style = MaterialTheme.typography.bodyMedium
+                modifier = Modifier.padding(14.dp),
+                color = textColor,
+                style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 22.sp)
             )
         }
     }
 }
 
 @Composable
-fun LoadingBubble() {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 4.dp),
-        horizontalArrangement = Arrangement.Start,
-        verticalAlignment = Alignment.CenterVertically
+fun LumiEmptyState() {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        // Assistant Icon placeholder
-        Box(
-            modifier = Modifier
-                .size(32.dp)
-                .clip(RoundedCornerShape(8.dp))
-                .background(Color.LightGray.copy(alpha = 0.5f)),
-            contentAlignment = Alignment.Center
-        ) {
-            // ... (Assistant initial/icon)
-        }
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Card(
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = 4.dp,
-                bottomEnd = 16.dp
-            ),
-            colors = CardDefaults.cardColors(containerColor = LightTeal),
-            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-        ) {
-            Text(
-                text = "Lumi is thinking...",
-                color = DarkTeal.copy(alpha = 0.6f),
-                modifier = Modifier.padding(10.dp),
-                style = MaterialTheme.typography.bodyMedium
-            )
-        }
-    }
-}
-
-@Composable
-fun ChatInput(
-    messageInput: String,
-    onInputChanged: (String) -> Unit,
-    onSend: () -> Unit,
-    isLoading: Boolean
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 8.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        OutlinedTextField(
-            value = messageInput,
-            onValueChange = onInputChanged,
-            label = { Text("Enter symptoms or question...") },
-            modifier = Modifier.weight(1f),
-            shape = RoundedCornerShape(24.dp),
-            maxLines = 4,
-            enabled = !isLoading
-        )
-
-        Spacer(modifier = Modifier.width(8.dp))
-
-        Button(
-            onClick = onSend,
-            enabled = messageInput.isNotBlank() && !isLoading,
-            shape = RoundedCornerShape(24.dp),
-            modifier = Modifier.height(56.dp)
+        Surface(
+            modifier = Modifier.size(80.dp),
+            shape = CircleShape,
+            color = Color(0xFFE7F5EC)
         ) {
             Icon(
-                Icons.AutoMirrored.Filled.Send,
-                contentDescription = "Send Message"
+                Icons.Default.History,
+                contentDescription = null,
+                modifier = Modifier.padding(20.dp),
+                tint = Color(0xFF2D6A4F)
             )
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            "How can I help you today?",
+            style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold)
+        )
+        Text(
+            "Check symptoms, health trends, or medical info.",
+            color = Color.Gray,
+            style = MaterialTheme.typography.bodyMedium
+        )
+    }
+}
+
+@Composable
+fun TypingIndicator() {
+    Row(
+        modifier = Modifier.padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        repeat(3) {
+            Surface(
+                modifier = Modifier.size(8.dp),
+                shape = CircleShape,
+                color = Color(0xFF2D6A4F).copy(alpha = 0.4f)
+            ) {}
         }
     }
 }
