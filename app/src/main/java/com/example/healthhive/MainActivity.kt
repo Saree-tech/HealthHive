@@ -41,11 +41,12 @@ import com.example.healthhive.ui.screens.*
 import com.example.healthhive.ui.theme.HealthHiveTheme
 import com.example.healthhive.viewmodel.HomeViewModel
 import com.example.healthhive.viewmodel.SymptomCheckerViewModel
+import com.example.healthhive.viewmodel.VitalsViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.random.Random
 
-// Screen routes definition
+// --- SEALED CLASS FOR TYPE-SAFE NAVIGATION ---
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
     data object Onboarding : Screen("onboarding")
@@ -76,19 +77,24 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val context = LocalContext.current
 
-                    // Ensure this Factory exists in your SymptomCheckerViewModel
+                    // Shared ViewModels for state consistency
                     val chatViewModel: SymptomCheckerViewModel = viewModel(
                         factory = SymptomCheckerViewModel.Factory(applicationContext)
                     )
+                    // We instantiate VitalsViewModel here to be shared if needed,
+                    // though each screen can also call viewModel() to get the same instance.
+                    val vitalsViewModel: VitalsViewModel = viewModel()
 
                     NavHost(
                         navController = navController,
                         startDestination = Screen.Splash.route
                     ) {
+                        // 1. SPLASH SCREEN
                         composable(Screen.Splash.route) {
                             SplashScreen(navController, authService)
                         }
 
+                        // 2. ONBOARDING SCREEN
                         composable(Screen.Onboarding.route) {
                             OnboardingScreen(onOnboardingComplete = {
                                 context.getSharedPreferences("health_hive_prefs", Context.MODE_PRIVATE)
@@ -99,34 +105,38 @@ class MainActivity : ComponentActivity() {
                             })
                         }
 
+                        // 3. AUTHENTICATION (LOGIN/SIGNUP)
                         composable(Screen.Auth.route) {
                             AuthScreen(navController, authService)
                         }
 
+                        // 4. DYNAMIC HOME SCREEN
                         composable(Screen.Home.route) {
                             val homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory())
                             HomeScreen(
                                 onNavigateTo = { route -> navController.navigate(route) },
                                 onSymptomCheckerClick = { navController.navigate(Screen.LumiChat.route) },
-                                onRecommendationsClick = { navController.navigate(Screen.Recommendations.route) },
                                 onReportsClick = { navController.navigate(Screen.Reports.route) },
-                                onTipsClick = { navController.navigate(Screen.Tips.route) },
                                 onSettingsClick = { navController.navigate(Screen.Settings.route) },
                                 onVitalClick = { type ->
                                     navController.navigate(Screen.VitalsDetail.createRoute(type))
                                 },
-                                viewModel = homeViewModel
+                                vitalsViewModel = vitalsViewModel,
+                                homeViewModel = homeViewModel
                             )
                         }
 
+                        // 5. LUMI AI CHAT
                         composable(Screen.LumiChat.route) {
                             SymptomCheckerScreen(chatViewModel)
                         }
 
+                        // 6. HEALTH CALENDAR
                         composable(Screen.Calendar.route) {
                             HealthCalendarScreen(onBack = { navController.popBackStack() })
                         }
 
+                        // 7. DYNAMIC VITALS DETAIL (Passes "Heart Rate", "Steps", etc)
                         composable(
                             route = Screen.VitalsDetail.route,
                             arguments = listOf(navArgument("vitalType") { type = NavType.StringType })
@@ -134,14 +144,15 @@ class MainActivity : ComponentActivity() {
                             val vitalType = backStackEntry.arguments?.getString("vitalType") ?: "Health Vital"
                             VitalsDetailScreen(
                                 vitalType = vitalType,
-                                onBack = { navController.popBackStack() }
+                                onBack = { navController.popBackStack() },
+                                viewModel = vitalsViewModel
                             )
                         }
 
+                        // 8. OTHER SERVICES
                         composable(Screen.Tips.route) {
                             NotificationsScreen(onBackClick = { navController.popBackStack() })
                         }
-
                         composable(Screen.Recommendations.route) { PlaceholderScreen("Recommendations", navController) }
                         composable(Screen.Reports.route) { PlaceholderScreen("History / Reports", navController) }
                         composable(Screen.Settings.route) { PlaceholderScreen("Settings / Profile", navController) }
@@ -152,6 +163,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+// --- SPLASH SCREEN WITH LOGIC ---
 @Composable
 fun SplashScreen(navController: NavController, authService: AuthService) {
     val context = LocalContext.current
@@ -163,14 +175,8 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
         label = "float"
     )
 
-    val shimmerTranslate by infiniteTransition.animateFloat(
-        initialValue = 0f, targetValue = 1500f,
-        animationSpec = infiniteRepeatable(tween(3000, easing = LinearEasing)),
-        label = "shimmer"
-    )
-
     LaunchedEffect(Unit) {
-        delay(3000)
+        delay(2500) // Visual branding delay
         val sharedPrefs = context.getSharedPreferences("health_hive_prefs", Context.MODE_PRIVATE)
         val isOnboardingComplete = sharedPrefs.getBoolean("onboarding_complete", false)
         val currentUser = authService.getCurrentUser()
@@ -191,15 +197,6 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
             .background(Color(0xFF0D1B16)),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.fillMaxSize()) {
-            repeat(10) {
-                drawCircle(
-                    color = Color(0xFF409167).copy(alpha = 0.1f),
-                    radius = 8f,
-                    center = Offset(size.width * Random.nextFloat(), size.height * Random.nextFloat())
-                )
-            }
-        }
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
             modifier = Modifier.graphicsLayer { translationY = floatAnim }
@@ -210,18 +207,11 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
                 modifier = Modifier.size(130.dp)
             )
             Spacer(modifier = Modifier.height(24.dp))
-
-            val shimmerBrush = Brush.linearGradient(
-                colors = listOf(Color(0xFFD8F3DC), Color(0xFF74C69D), Color(0xFFD8F3DC)),
-                start = Offset(shimmerTranslate, shimmerTranslate),
-                end = Offset(shimmerTranslate + 300f, shimmerTranslate + 300f)
-            )
-
             Text(
                 text = "HealthHive",
                 style = MaterialTheme.typography.displayMedium.copy(
                     fontWeight = FontWeight.Black,
-                    brush = shimmerBrush,
+                    color = Color(0xFFD8F3DC),
                     letterSpacing = 2.sp
                 )
             )
@@ -229,6 +219,7 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
     }
 }
 
+// --- AUTH SCREEN ---
 @Composable
 fun AuthScreen(navController: NavController, authService: AuthService) {
     var isLogin by remember { mutableStateOf(true) }
@@ -299,15 +290,13 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
                                 popUpTo(Screen.Auth.route) { inclusive = true }
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(context, e.localizedMessage ?: "Error", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, e.localizedMessage ?: "Auth Failed", Toast.LENGTH_SHORT).show()
                         } finally {
                             isLoading = false
                         }
                     }
                 },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 shape = RoundedCornerShape(12.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F))
             ) {
@@ -316,7 +305,7 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
 
             TextButton(onClick = { isLogin = !isLogin }) {
                 Text(
-                    text = if (isLogin) "New to HealthHive? Sign Up" else "Already have an account? Login",
+                    text = if (isLogin) "New here? Sign Up" else "Have an account? Login",
                     color = Color(0xFF2D6A4F)
                 )
             }
@@ -324,6 +313,7 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
     }
 }
 
+// --- PLACEHOLDER ---
 @Composable
 fun PlaceholderScreen(title: String, navController: NavController) {
     Scaffold(
@@ -332,19 +322,14 @@ fun PlaceholderScreen(title: String, navController: NavController) {
                 title = { Text(title) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
-                        Icon(imageVector = Icons.Default.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.Default.ArrowBack, contentDescription = "Back")
                     }
                 }
             )
         }
     ) { padding ->
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding),
-            contentAlignment = Alignment.Center
-        ) {
-            Text("$title Screen coming soon!")
+        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            Text("$title coming soon!")
         }
     }
 }

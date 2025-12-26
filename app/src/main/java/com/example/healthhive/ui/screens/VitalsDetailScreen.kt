@@ -1,14 +1,17 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.healthhive.ui.screens
 
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.MonitorHeart
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -18,14 +21,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.healthhive.viewmodel.VitalsViewModel
 import com.example.healthhive.viewmodel.VitalHistoryEntry
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun VitalsDetailScreen(
     vitalType: String,
@@ -41,165 +42,128 @@ fun VitalsDetailScreen(
     }
 
     Scaffold(
+        containerColor = Color(0xFFF8FAF9),
         topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        if (isSummaryMode) "Full Health Analysis" else vitalType,
-                        fontWeight = FontWeight.Bold
-                    )
-                },
+            CenterAlignedTopAppBar(
+                title = { Text(if (isSummaryMode) "Health Dashboard" else vitalType, fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, null) }
-                }
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color(0xFF1B4332))
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp)
-                .verticalScroll(rememberScrollState()),
-            horizontalAlignment = Alignment.CenterHorizontally
+            modifier = Modifier.padding(padding).fillMaxSize().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())
         ) {
-            if (!isSummaryMode) {
-                // 1. THE LIVE GRAPH (Only for specific vitals)
+            if (isSummaryMode) {
+                SummaryDashboard(uiState.latestVitals)
+                Spacer(modifier = Modifier.height(20.dp))
+                Button(
+                    onClick = { viewModel.triggerManualAnalysis("All") },
+                    modifier = Modifier.fillMaxWidth().height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F)),
+                    enabled = !uiState.isLumiThinking
+                ) {
+                    Icon(Icons.Default.AutoAwesome, null)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Generate Lumi Report", fontWeight = FontWeight.Bold)
+                }
+            } else {
                 Card(
-                    modifier = Modifier.fillMaxWidth().height(250.dp),
+                    modifier = Modifier.fillMaxWidth().height(260.dp),
+                    shape = RoundedCornerShape(32.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    elevation = CardDefaults.cardElevation(2.dp)
+                ) {
+                    Box(Modifier.padding(20.dp).fillMaxSize()) {
+                        if (uiState.isLoading) {
+                            CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color(0xFF2D6A4F))
+                        } else if (uiState.history.isEmpty()) {
+                            Text("No history recorded", Modifier.align(Alignment.Center), color = Color.Gray)
+                        } else {
+                            VitalsChart(uiState.history)
+                        }
+                    }
+                }
+            }
+
+            if (uiState.isLumiThinking || uiState.aiRecommendation.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Lumi's Analysis", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
+                Card(
+                    modifier = Modifier.padding(vertical = 12.dp).fillMaxWidth(),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(4.dp)
+                    elevation = CardDefaults.cardElevation(2.dp)
                 ) {
-                    if (uiState.isLoading) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            CircularProgressIndicator(color = Color(0xFF2D6A4F))
-                        }
-                    } else if (uiState.history.isEmpty()) {
-                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                            Text("No data available", color = Color.Gray)
-                        }
-                    } else {
-                        VitalsChart(uiState.history)
-                    }
-                }
-                Spacer(modifier = Modifier.height(24.dp))
-            } else {
-                // 1. SUMMARY HEADER (Only for 'All')
-                Icon(
-                    imageVector = Icons.Default.Info,
-                    contentDescription = null,
-                    modifier = Modifier.size(48.dp),
-                    tint = Color(0xFF1B4332)
-                )
-                Text(
-                    "Lumi Deep Insights",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1B4332),
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Text(
-                    "Comprehensive review of your recent biometric trends.",
-                    fontSize = 14.sp,
-                    color = Color.Gray,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(bottom = 24.dp)
-                )
-            }
-
-            // 2. AI ANALYSIS CARD
-            Text(
-                if (isSummaryMode) "Health Report" else "Lumi's Analysis",
-                modifier = Modifier.fillMaxWidth(),
-                fontWeight = FontWeight.Bold,
-                color = Color(0xFF1B4332)
-            )
-
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0F9F4)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text(
-                    text = uiState.aiRecommendation,
-                    modifier = Modifier.padding(20.dp),
-                    fontSize = 16.sp,
-                    color = Color(0xFF2D6A4F),
-                    lineHeight = 24.sp
-                )
-            }
-
-            // 3. RECOMMENDATIONS (Shown in Summary Mode)
-            if (isSummaryMode) {
-                Spacer(modifier = Modifier.height(16.dp))
-                Text(
-                    "Next Steps",
-                    modifier = Modifier.fillMaxWidth(),
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF1B4332)
-                )
-
-                val recommendations = listOf(
-                    "Maintain consistent logging for higher AI accuracy.",
-                    "Review these trends with your physician during check-ups.",
-                    "Ensure you are resting 5 minutes before vital captures."
-                )
-
-                recommendations.forEach { tip ->
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White),
-                        // FIXED: Using standard BorderStroke for mobile
-                        border = BorderStroke(1.dp, Color(0xFFE8F5E9)),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Text(
-                            text = "• $tip",
-                            modifier = Modifier.padding(12.dp),
-                            fontSize = 14.sp,
-                            color = Color.DarkGray
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // 4. INPUT SECTION (Hidden in Summary Mode)
-            if (!isSummaryMode) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    OutlinedTextField(
-                        value = inputValue,
-                        onValueChange = { inputValue = it },
-                        label = { Text("Enter Value") },
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
-                    )
-
-                    Spacer(modifier = Modifier.width(8.dp))
-
-                    Button(
-                        onClick = {
-                            if (inputValue.isNotBlank()) {
-                                viewModel.saveNewEntry(vitalType, inputValue)
-                                inputValue = ""
+                    Column(Modifier.padding(20.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Surface(shape = CircleShape, color = Color(0xFFE8F5E9), modifier = Modifier.size(32.dp)) {
+                                Icon(Icons.Default.AutoAwesome, null, Modifier.padding(6.dp), tint = Color(0xFF2D6A4F))
                             }
-                        },
-                        modifier = Modifier.height(56.dp),
-                        shape = RoundedCornerShape(12.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
-                    ) {
-                        Text("Save")
+                            Spacer(Modifier.width(12.dp))
+                            if (uiState.isLumiThinking) {
+                                LinearProgressIndicator(Modifier.weight(1f), color = Color(0xFF2D6A4F))
+                            } else {
+                                Text("AI Insight", fontWeight = FontWeight.Bold, color = Color(0xFF2D6A4F))
+                            }
+                        }
+                        if (!uiState.isLumiThinking && uiState.aiRecommendation.isNotEmpty()) {
+                            Spacer(Modifier.height(12.dp))
+                            Text(text = uiState.aiRecommendation, fontSize = 15.sp, color = Color(0xFF1B4332), fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
+            }
+
+            if (!isSummaryMode) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Log New Data", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
+                Spacer(Modifier.height(12.dp))
+                OutlinedTextField(
+                    value = inputValue,
+                    onValueChange = { inputValue = it },
+                    placeholder = { Text("Enter value...") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF2D6A4F))
+                )
+                Button(
+                    onClick = { if(inputValue.isNotBlank()){ viewModel.saveNewEntry(vitalType, inputValue); inputValue = "" } },
+                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
+                ) {
+                    Text("Save Record", fontWeight = FontWeight.Bold)
+                }
+            }
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
+@Composable
+fun SummaryDashboard(latest: Map<String, Float>) {
+    Column {
+        Text("Latest Readings", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
+        Spacer(Modifier.height(12.dp))
+        val items = latest.toList()
+        items.chunked(2).forEach { rowItems ->
+            Row(Modifier.fillMaxWidth()) {
+                rowItems.forEach { item ->
+                    Card(Modifier.weight(1f).padding(4.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
+                        Column(Modifier.padding(16.dp)) {
+                            Icon(Icons.Default.MonitorHeart, null, tint = Color(0xFF409167))
+                            Text(item.first, fontSize = 12.sp, color = Color.Gray)
+                            Text(item.second.toString(), fontSize = 20.sp, fontWeight = FontWeight.Black)
+                        }
+                    }
+                }
+                if (rowItems.size == 1) Spacer(Modifier.weight(1f))
             }
         }
     }
@@ -207,33 +171,20 @@ fun VitalsDetailScreen(
 
 @Composable
 fun VitalsChart(history: List<VitalHistoryEntry>) {
-    val dataPoints = history.map { it.value }
-    if (dataPoints.isEmpty()) return
-
-    val maxVal = dataPoints.maxOrNull() ?: 1f
-    val minVal = dataPoints.minOrNull() ?: 0f
-    val range = if (maxVal - minVal == 0f) 1f else maxVal - minVal
-
-    Box(modifier = Modifier.fillMaxSize().padding(24.dp)) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val width = size.width
-            val height = size.height
-            val spacing = if (dataPoints.size > 1) width / (dataPoints.size - 1) else 0f
-
-            val path = Path()
-            dataPoints.forEachIndexed { index, value ->
-                val x = index * spacing
-                val y = height - ((value - minVal) / range * height)
-                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                drawCircle(color = Color(0xFF2D6A4F), radius = 8f, center = Offset(x, y))
-            }
-            drawPath(path = path, color = Color(0xFF409167), style = Stroke(width = 5f))
+    val points = history.map { it.value }
+    if (points.size < 2) return
+    val max = points.maxOrNull() ?: 100f
+    val min = points.minOrNull() ?: 0f
+    val range = (max - min).coerceAtLeast(1f)
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val spacing = size.width / (points.size - 1).coerceAtLeast(1)
+        val path = Path()
+        points.forEachIndexed { i, v ->
+            val x = i * spacing
+            val y = size.height - ((v - min) / range * size.height)
+            if (i == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            drawCircle(Color(0xFF2D6A4F), 6f, Offset(x, y))
         }
-        Text(
-            text = "Latest: ${dataPoints.last()}",
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            modifier = Modifier.align(Alignment.TopEnd)
-        )
+        drawPath(path, Color(0xFF409167), style = Stroke(5f))
     }
 }

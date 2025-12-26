@@ -1,20 +1,22 @@
 package com.example.healthhive.viewmodel
 
-import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.healthhive.BuildConfig
 import com.google.ai.client.generativeai.GenerativeModel
+import com.google.ai.client.generativeai.type.QuotaExceededException
 import com.google.ai.client.generativeai.type.generationConfig
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.firestore.ListenerRegistration
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -27,8 +29,11 @@ data class VitalHistoryEntry(
 
 data class VitalsUiState(
     val history: List<VitalHistoryEntry> = emptyList(),
-    val aiRecommendation: String = "Lumi is analyzing your health trends...",
-    val isLoading: Boolean = false
+    val latestVitals: Map<String, Float> = emptyMap(),
+    val aiRecommendation: String = "",
+    val healthScore: Float = 0f,
+    val isLoading: Boolean = false,
+    val isLumiThinking: Boolean = false
 )
 
 class VitalsViewModel : ViewModel() {
@@ -39,100 +44,87 @@ class VitalsViewModel : ViewModel() {
     private val auth = FirebaseAuth.getInstance()
     private var listenerRegistration: ListenerRegistration? = null
 
-    private val generativeModel = GenerativeModel(
-        modelName = "gemini-2.5-flash",
-        apiKey = BuildConfig.GEMINI_API_KEY,
-        generationConfig = generationConfig { temperature = 0.7f }
-    )
+    private val generativeModel by lazy {
+        GenerativeModel(
+            modelName = "gemini-1.5-flash",
+            apiKey = BuildConfig.GEMINI_API_KEY,
+            generationConfig = generationConfig { temperature = 0.4f }
+        )
+    }
 
     fun startListening(vitalType: String) {
         val userId = auth.currentUser?.uid ?: return
         listenerRegistration?.remove()
-        _uiState.update { it.copy(isLoading = true) }
+        _uiState.update { it.copy(isLoading = true, aiRecommendation = "") }
 
         val collectionRef = firestore.collection("users").document(userId).collection("vitals")
         val query = if (vitalType == "All") {
-            collectionRef.orderBy("timestamp", Query.Direction.ASCENDING)
+            collectionRef.orderBy("timestamp", Query.Direction.DESCENDING).limit(50)
         } else {
-            collectionRef.whereEqualTo("type", vitalType).orderBy("timestamp", Query.Direction.ASCENDING)
+            collectionRef.whereEqualTo("type", vitalType)
+                .orderBy("timestamp", Query.Direction.DESCENDING).limit(20)
         }
 
-        listenerRegistration = query.addSnapshotListener { snapshot, error ->
-            if (error != null) {
-                _uiState.update { it.copy(isLoading = false) }
-                return@addSnapshotListener
-            }
+        listenerRegistration = query.addSnapshotListener { snapshot, _ ->
+            viewModelScope.launch(Dispatchers.Default) {
+                val entries = snapshot?.documents?.mapNotNull { doc ->
+                    val value = (doc.get("value") as? Number)?.toFloat() ?: 0f
+                    val ts = doc.getLong("timestamp") ?: 0L
+                    val typeStr = doc.getString("type") ?: ""
+                    val dateLabel = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(ts))
+                    VitalHistoryEntry(dateLabel, value, ts, typeStr)
+                } ?: emptyList()
 
-            val actualHistory = snapshot?.documents?.mapNotNull { doc ->
-                val rawValue = doc.get("value")
-                val value = when (rawValue) {
-                    is Double -> rawValue.toFloat()
-                    is Long -> rawValue.toFloat()
-                    else -> 0f
+                val sorted = entries.sortedBy { it.timestamp }
+                val latest = entries.groupBy { it.type }.mapValues { it.value.first().value }
+
+                val score = if (latest.isEmpty()) 0.70f else {
+                    val avgNormalized = latest.values.map { (it / 150f).coerceIn(0f, 1f) }.average()
+                    avgNormalized.toFloat()
                 }
-                val ts = doc.getLong("timestamp") ?: 0L
-                val typeStr = doc.getString("type") ?: ""
-                val dateLabel = SimpleDateFormat("dd MMM", Locale.getDefault()).format(Date(ts))
-                VitalHistoryEntry(dateLabel, value, ts, typeStr)
-            } ?: emptyList()
 
-            _uiState.update { it.copy(history = actualHistory, isLoading = false) }
-
-            if (actualHistory.isNotEmpty()) {
-                getGeminiRecommendation(vitalType, actualHistory)
+                withContext(Dispatchers.Main) {
+                    _uiState.update {
+                        it.copy(history = sorted, latestVitals = latest, healthScore = score, isLoading = false)
+                    }
+                }
             }
         }
     }
 
-    private fun getGeminiRecommendation(type: String, history: List<VitalHistoryEntry>) {
-        viewModelScope.launch {
-            val lastEntry = history.last()
+    fun triggerManualAnalysis(type: String) {
+        val history = _uiState.value.history
+        if (history.isEmpty()) return
 
-            // Branching prompt logic based on selection
+        viewModelScope.launch {
+            _uiState.update { it.copy(isLumiThinking = true) }
             val prompt = if (type == "All") {
-                """
-                SYSTEM: You are Lumi, a Chief Medical Consultant. 
-                CONTEXT: This is an "Overall Health Summary" spanning multiple vital types.
-                DATASET: ${history.takeLast(15).joinToString { "${it.type}: ${it.value} (${it.date})" }}
-                TASK:
-                1. Identify the most critical biometric trend across all logged types.
-                2. Provide a detailed, 40-word technical analysis of the user's overall physiological state.
-                3. Mention specific readings (e.g., "Your ${history.firstOrNull()?.type} is trending...") 
-                4. Conclude with a high-level lifestyle adjustment.
-                5. Keep it professional and clinical. DO NOT give a diagnosis.
-                """.trimIndent()
+                "Recent vitals: ${history.takeLast(10).joinToString { "${it.type}:${it.value}" }}. Provide exactly 30 words of advice. No symbols."
             } else {
-                """
-                SYSTEM: You are Lumi, a precise medical data analyst. 
-                USER DATA: The user's current $type is ${lastEntry.value}.
-                TASK: 
-                1. If the value is dangerously high or low for $type, strongly advise immediate rest.
-                2. If the value is normal, give a specific lifestyle tip relevant to $type.
-                3. Response MUST be under 20 words.
-                4. Start with a direct reaction to ${lastEntry.value}.
-                """.trimIndent()
+                "Vital recorded: $type at ${history.last().value}. Provide 15 simple words of advice. No symbols."
             }
 
             try {
                 val response = generativeModel.generateContent(prompt)
-                _uiState.update { it.copy(aiRecommendation = response.text?.trim() ?: "Reviewing trends...") }
+                val cleanText = response.text?.replace("*", "")?.trim() ?: "Trends are stable."
+                _uiState.update { it.copy(aiRecommendation = cleanText, isLumiThinking = false) }
+            } catch (e: QuotaExceededException) {
+                _uiState.update {
+                    it.copy(aiRecommendation = "Lumi is resting. Please retry in 1 minute.", isLumiThinking = false)
+                }
             } catch (e: Exception) {
-                Log.e("LumiError", "Gemini failed: ${e.message}")
-                _uiState.update { it.copy(aiRecommendation = "Lumi is currently observing your health patterns.") }
+                _uiState.update { it.copy(aiRecommendation = "Lumi is busy. Try again soon.", isLumiThinking = false) }
             }
         }
     }
 
-    fun saveNewEntry(vitalType: String, valueStr: String) {
+    fun saveNewEntry(type: String, value: String) {
         val userId = auth.currentUser?.uid ?: return
-        val value = valueStr.toFloatOrNull() ?: return
-        val data = hashMapOf(
-            "type" to vitalType,
-            "value" to value,
-            "timestamp" to System.currentTimeMillis()
-        )
-        _uiState.update { it.copy(aiRecommendation = "Lumi is evaluating...") }
+        val valFloat = value.toFloatOrNull() ?: return
+        val data = hashMapOf("type" to type, "value" to valFloat, "timestamp" to System.currentTimeMillis())
+
         firestore.collection("users").document(userId).collection("vitals").add(data)
+            .addOnSuccessListener { triggerManualAnalysis(type) }
     }
 
     override fun onCleared() {
