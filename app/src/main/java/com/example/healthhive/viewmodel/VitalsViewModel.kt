@@ -42,7 +42,7 @@ class VitalsViewModel : ViewModel() {
     private val generativeModel = GenerativeModel(
         modelName = "gemini-2.5-flash",
         apiKey = BuildConfig.GEMINI_API_KEY,
-        generationConfig = generationConfig { temperature = 0.8f } // Higher temperature for more varied advice
+        generationConfig = generationConfig { temperature = 0.7f }
     )
 
     fun startListening(vitalType: String) {
@@ -88,24 +88,37 @@ class VitalsViewModel : ViewModel() {
         viewModelScope.launch {
             val lastEntry = history.last()
 
-            // IMPROVED PROMPT: Forces AI to acknowledge the specific number and type
-            val prompt = """
+            // Branching prompt logic based on selection
+            val prompt = if (type == "All") {
+                """
+                SYSTEM: You are Lumi, a Chief Medical Consultant. 
+                CONTEXT: This is an "Overall Health Summary" spanning multiple vital types.
+                DATASET: ${history.takeLast(15).joinToString { "${it.type}: ${it.value} (${it.date})" }}
+                TASK:
+                1. Identify the most critical biometric trend across all logged types.
+                2. Provide a detailed, 40-word technical analysis of the user's overall physiological state.
+                3. Mention specific readings (e.g., "Your ${history.firstOrNull()?.type} is trending...") 
+                4. Conclude with a high-level lifestyle adjustment.
+                5. Keep it professional and clinical. DO NOT give a diagnosis.
+                """.trimIndent()
+            } else {
+                """
                 SYSTEM: You are Lumi, a precise medical data analyst. 
                 USER DATA: The user's current $type is ${lastEntry.value}.
                 TASK: 
-                1. If the value is dangerously high (e.g., Heart Rate > 150) or low (e.g., Heart Rate < 40), strongly advise immediate rest and professional consultation.
+                1. If the value is dangerously high or low for $type, strongly advise immediate rest.
                 2. If the value is normal, give a specific lifestyle tip relevant to $type.
-                3. Your response MUST be under 20 words.
-                4. Start the response with a direct reaction to the value ${lastEntry.value}.
-                DO NOT give a generic "monitoring is good" response.
-            """.trimIndent()
+                3. Response MUST be under 20 words.
+                4. Start with a direct reaction to ${lastEntry.value}.
+                """.trimIndent()
+            }
 
             try {
                 val response = generativeModel.generateContent(prompt)
-                _uiState.update { it.copy(aiRecommendation = response.text?.trim() ?: "Data logged.") }
+                _uiState.update { it.copy(aiRecommendation = response.text?.trim() ?: "Reviewing trends...") }
             } catch (e: Exception) {
                 Log.e("LumiError", "Gemini failed: ${e.message}")
-                _uiState.update { it.copy(aiRecommendation = "Lumi is observing your $type of ${lastEntry.value}.") }
+                _uiState.update { it.copy(aiRecommendation = "Lumi is currently observing your health patterns.") }
             }
         }
     }
@@ -118,7 +131,7 @@ class VitalsViewModel : ViewModel() {
             "value" to value,
             "timestamp" to System.currentTimeMillis()
         )
-        _uiState.update { it.copy(aiRecommendation = "Lumi is evaluating ${value}...") }
+        _uiState.update { it.copy(aiRecommendation = "Lumi is evaluating...") }
         firestore.collection("users").document(userId).collection("vitals").add(data)
     }
 
