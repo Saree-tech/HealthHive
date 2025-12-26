@@ -8,7 +8,6 @@ import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -19,8 +18,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
@@ -42,11 +39,10 @@ import com.example.healthhive.ui.theme.HealthHiveTheme
 import com.example.healthhive.viewmodel.HomeViewModel
 import com.example.healthhive.viewmodel.SymptomCheckerViewModel
 import com.example.healthhive.viewmodel.VitalsViewModel
+import com.example.healthhive.viewmodel.HealthCalendarViewModel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.random.Random
 
-// --- SEALED CLASS FOR TYPE-SAFE NAVIGATION ---
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
     data object Onboarding : Screen("onboarding")
@@ -77,24 +73,19 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val context = LocalContext.current
 
-                    // Shared ViewModels for state consistency
                     val chatViewModel: SymptomCheckerViewModel = viewModel(
                         factory = SymptomCheckerViewModel.Factory(applicationContext)
                     )
-                    // We instantiate VitalsViewModel here to be shared if needed,
-                    // though each screen can also call viewModel() to get the same instance.
                     val vitalsViewModel: VitalsViewModel = viewModel()
 
                     NavHost(
                         navController = navController,
                         startDestination = Screen.Splash.route
                     ) {
-                        // 1. SPLASH SCREEN
                         composable(Screen.Splash.route) {
                             SplashScreen(navController, authService)
                         }
 
-                        // 2. ONBOARDING SCREEN
                         composable(Screen.Onboarding.route) {
                             OnboardingScreen(onOnboardingComplete = {
                                 context.getSharedPreferences("health_hive_prefs", Context.MODE_PRIVATE)
@@ -105,12 +96,10 @@ class MainActivity : ComponentActivity() {
                             })
                         }
 
-                        // 3. AUTHENTICATION (LOGIN/SIGNUP)
                         composable(Screen.Auth.route) {
                             AuthScreen(navController, authService)
                         }
 
-                        // 4. DYNAMIC HOME SCREEN
                         composable(Screen.Home.route) {
                             val homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory())
                             HomeScreen(
@@ -126,17 +115,23 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // 5. LUMI AI CHAT
                         composable(Screen.LumiChat.route) {
                             SymptomCheckerScreen(chatViewModel)
                         }
 
-                        // 6. HEALTH CALENDAR
+                        // --- UPDATED CALENDAR ROUTE ---
                         composable(Screen.Calendar.route) {
-                            HealthCalendarScreen(onBack = { navController.popBackStack() })
+                            val calendarViewModel: HealthCalendarViewModel = viewModel()
+                            val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
+                            val showProgress = sharedPrefs.getBoolean("show_daily_progress", true)
+
+                            HealthCalendarScreen(
+                                onBack = { navController.popBackStack() },
+                                viewModel = calendarViewModel,
+                                showProgressFromPrefs = showProgress
+                            )
                         }
 
-                        // 7. DYNAMIC VITALS DETAIL (Passes "Heart Rate", "Steps", etc)
                         composable(
                             route = Screen.VitalsDetail.route,
                             arguments = listOf(navArgument("vitalType") { type = NavType.StringType })
@@ -149,7 +144,6 @@ class MainActivity : ComponentActivity() {
                             )
                         }
 
-                        // 8. OTHER SERVICES
                         composable(Screen.Tips.route) {
                             NotificationsScreen(onBackClick = { navController.popBackStack() })
                         }
@@ -163,7 +157,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- SPLASH SCREEN WITH LOGIC ---
+// --- SPLASH SCREEN ---
 @Composable
 fun SplashScreen(navController: NavController, authService: AuthService) {
     val context = LocalContext.current
@@ -176,7 +170,7 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
     )
 
     LaunchedEffect(Unit) {
-        delay(2500) // Visual branding delay
+        delay(2500)
         val sharedPrefs = context.getSharedPreferences("health_hive_prefs", Context.MODE_PRIVATE)
         val isOnboardingComplete = sharedPrefs.getBoolean("onboarding_complete", false)
         val currentUser = authService.getCurrentUser()

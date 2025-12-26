@@ -3,8 +3,9 @@ plugins {
     id 'org.jetbrains.kotlin.android'
     id 'com.google.gms.google-services'
     id 'org.jetbrains.kotlin.plugin.compose'
-    // ADDED: Apply the serialization plugin
     id 'org.jetbrains.kotlin.plugin.serialization'
+    // REMOVED: id 'kotlin-kapt'
+    id 'com.google.devtools.ksp' version '2.1.0-1.0.29' // ADDED
 }
 
 def properties = new Properties()
@@ -73,14 +74,21 @@ dependencies {
     implementation libs.androidx.navigation.compose
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3"
 
-    // DataStore
+    // Room Database - UPDATED TO KSP
+    def room_version = "2.6.1"
+    implementation "androidx.room:room-runtime:$room_version"
+    implementation "androidx.room:room-ktx:$room_version"
+    // CHANGED FROM kapt TO ksp
+    ksp "androidx.room:room-compiler:$room_version"
+
+    // DataStore & SharedPrefs
     implementation "androidx.datastore:datastore-preferences:1.1.1"
 
     // Coroutines
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.8.1"
     implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.8.1"
 
-    // Serialization (ADDED: Required for the Gemini SDK to parse responses)
+    // Serialization
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
 
     // Firebase (BOM)
@@ -88,6 +96,9 @@ dependencies {
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-firestore")
     implementation("com.google.firebase:firebase-analytics")
+    implementation ("androidx.fragment:fragment-ktx:1.8.5")
+    implementation ("androidx.activity:activity-ktx:1.9.3")
+    implementation ("androidx.core:core-ktx:1.13.1")
 
     // AI / Gemini
     implementation("com.google.ai.client.generativeai:generativeai:0.8.0")

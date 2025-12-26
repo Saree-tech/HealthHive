@@ -1,16 +1,25 @@
+@file:OptIn(ExperimentalMaterial3Api::class)
+
 package com.example.healthhive.ui.screens
 
+import android.Manifest
 import android.app.TimePickerDialog
-import android.util.Log
+import android.os.Build
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -18,123 +27,46 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.firestore.FieldValue
-import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.firestore.IgnoreExtraProperties
-import com.google.firebase.firestore.PropertyName
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.healthhive.data.local.HealthEvent
+import com.example.healthhive.viewmodel.HealthCalendarViewModel
+import com.example.healthhive.utils.HealthNotificationHelper
 import java.text.SimpleDateFormat
 import java.util.*
 
-// --- MODELS ---
-
-enum class RecurrenceType { ONETIME, ONE_TIME, DAILY, WEEKLY, MONTHLY }
-
-@IgnoreExtraProperties
-data class MedicationData(
-    val id: String = "",
-    val userId: String = "",
-    val name: String = "",
-    val dosage: String = "",
-    val time: String = "08:00 AM",
-    val datesTaken: List<String> = emptyList(),
-    val recurrence: RecurrenceType = RecurrenceType.DAILY,
-
-    @get:PropertyName("isTaken") @set:PropertyName("isTaken")
-    var isTaken: Boolean = false,
-
-    @get:PropertyName("dateAdded") @set:PropertyName("dateAdded")
-    var dateAdded: Long = System.currentTimeMillis()
-)
-
-@IgnoreExtraProperties
-data class Appointment(
-    val id: String = "",
-    val userId: String = "",
-    val title: String = "",
-    val date: String = "", // We keep this as String for your logic
-    val time: String = "10:00 AM",
-    val type: RecurrenceType = RecurrenceType.ONETIME
-)
-
-// --- MAIN SCREEN ---
-
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun HealthCalendarScreen(onBack: () -> Unit) {
-    val db = FirebaseFirestore.getInstance()
-    val userId = FirebaseAuth.getInstance().currentUser?.uid ?: ""
-    val sdf = remember { SimpleDateFormat("yyyyMMdd", Locale.getDefault()) }
-    val today = remember { sdf.format(Date()) }
-
-    var selectedDate by remember { mutableStateOf(today) }
-    var medications by remember { mutableStateOf<List<MedicationData>>(emptyList()) }
-    var appointments by remember { mutableStateOf<List<Appointment>>(emptyList()) }
+fun HealthCalendarScreen(
+    onBack: () -> Unit,
+    showProgressFromPrefs: Boolean,
+    viewModel: HealthCalendarViewModel = viewModel()
+) {
+    val context = LocalContext.current
+    val selectedDate by viewModel.selectedDate.collectAsState()
+    val allEvents by viewModel.dailyEvents.collectAsState()
 
     var isMedSheetOpen by remember { mutableStateOf(false) }
     var isApptSheetOpen by remember { mutableStateOf(false) }
 
-    val dailyAppts by remember(appointments, selectedDate) {
-        derivedStateOf { appointments.filter { isApptVisibleOnDate(it, selectedDate) } }
+    val medications = allEvents.filter { it.type == "MEDICATION" }
+    val appointments = allEvents.filter { it.type == "APPOINTMENT" }
+
+    // --- PERMISSION REQUEST LOGIC ---
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (!isGranted) {
+            Toast.makeText(context, "Notifications disabled. Alarms won't show.", Toast.LENGTH_LONG).show()
+        }
     }
 
-    val medicationSplit by remember(medications, selectedDate) {
-        derivedStateOf { medications.partition { it.datesTaken.contains(selectedDate) } }
-    }
-
-    DisposableEffect(userId) {
-        if (userId.isEmpty()) return@DisposableEffect onDispose {}
-
-        val medListener = db.collection("medications")
-            .whereEqualTo("userId", userId)
-            .addSnapshotListener { snap, _ ->
-                medications = snap?.toObjects(MedicationData::class.java) ?: emptyList()
-            }
-
-        val apptListener = db.collection("appointments")
-            .whereEqualTo("userId", userId)
-            .addSnapshotListener { snap, error ->
-                if (error != null) {
-                    Log.e("Firestore", "Error listening to appts", error)
-                    return@addSnapshotListener
-                }
-
-                // SAFE MAPPING FIX:
-                // Instead of snap?.toObjects(), we manually map to catch the Long vs String error
-                val list = mutableListOf<Appointment>()
-                snap?.documents?.forEach { doc ->
-                    try {
-                        // Check if 'date' is a Long and convert it to String if necessary
-                        val rawDate = doc.get("date")
-                        val dateStr = when (rawDate) {
-                            is Long -> rawDate.toString()
-                            is String -> rawDate
-                            else -> ""
-                        }
-
-                        val appt = Appointment(
-                            id = doc.id,
-                            userId = doc.getString("userId") ?: "",
-                            title = doc.getString("title") ?: "",
-                            date = dateStr,
-                            time = doc.getString("time") ?: "10:00 AM",
-                            type = RecurrenceType.valueOf(doc.getString("type") ?: "ONETIME")
-                        )
-                        list.add(appt)
-                    } catch (e: Exception) {
-                        Log.e("Firestore", "Failed to map document ${doc.id}", e)
-                    }
-                }
-                appointments = list
-            }
-
-        onDispose {
-            medListener.remove()
-            apptListener.remove()
+    LaunchedEffect(Unit) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 
@@ -144,11 +76,21 @@ fun HealthCalendarScreen(onBack: () -> Unit) {
             CenterAlignedTopAppBar(
                 title = { Text("Health Hub", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) { Icon(Icons.Default.ArrowBack, "Back") }
+                    IconButton(onClick = onBack) {
+                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                    }
                 },
                 actions = {
+                    // TEST NOTIFICATION BUTTON (Tests both styles)
+                    IconButton(onClick = {
+                        val helper = HealthNotificationHelper(context)
+                        helper.showNotification("Medication Test", "Take your 500mg dose", "MEDICATION")
+                        helper.showNotification("Appointment Test", "Visit Dr. Smith at 10AM", "APPOINTMENT")
+                    }) {
+                        Icon(imageVector = Icons.Default.NotificationsActive, contentDescription = "Test", tint = Color(0xFF2D6A4F))
+                    }
                     IconButton(onClick = { isApptSheetOpen = true }) {
-                        Icon(Icons.Default.Event, tint = Color(0xFF2D6A4F), contentDescription = "Add Appt")
+                        Icon(imageVector = Icons.Default.Event, contentDescription = "Add Appointment", tint = Color(0xFF2D6A4F))
                     }
                 }
             )
@@ -158,61 +100,76 @@ fun HealthCalendarScreen(onBack: () -> Unit) {
                 onClick = { isMedSheetOpen = true },
                 containerColor = Color(0xFF1B4332),
                 contentColor = Color.White,
-                icon = { Icon(Icons.Default.Add, null) },
+                icon = { Icon(imageVector = Icons.Default.Add, contentDescription = null) },
                 text = { Text("Add Medication") }
             )
         }
     ) { padding ->
         LazyColumn(
-            modifier = Modifier.padding(padding).fillMaxSize(),
+            modifier = Modifier
+                .padding(padding)
+                .fillMaxSize(),
             contentPadding = PaddingValues(bottom = 80.dp)
         ) {
-            item { ProfessionalDashboard(medications, selectedDate) }
+            if (showProgressFromPrefs) {
+                item { ProfessionalDashboard(medications, selectedDate) }
+            }
 
-            item { CalendarStrip(selectedDate, appointments) { selectedDate = it } }
+            item {
+                CalendarStrip(selectedDate, allEvents) { viewModel.selectDate(it) }
+            }
 
-            item { SectionHeader("Scheduled Checkups", dailyAppts.size, Icons.Default.DateRange) }
-            if (dailyAppts.isEmpty()) {
+            item { SectionHeader("Scheduled Checkups", Icons.Default.DateRange) }
+
+            if (appointments.isEmpty()) {
                 item { EmptyStateHint("No appointments for this day") }
             } else {
-                items(dailyAppts, key = { it.id }) { appt ->
-                    ProfessionalApptCard(appt) {
-                        db.collection("appointments").document(appt.id).delete()
-                    }
+                items(items = appointments, key = { it.id }) { appt ->
+                    ProfessionalApptCard(appt) { viewModel.deleteEvent(appt.id) }
                 }
             }
 
-            val (takenMeds, pendingMeds) = medicationSplit
-            item { SectionHeader("Medication Plan", medications.size, Icons.Default.MedicalServices) }
+            item { SectionHeader("Medication Plan", Icons.Default.MedicalServices) }
 
-            items(pendingMeds, key = { it.id }) { med ->
-                ProfessionalMedCard(med, isTaken = false,
-                    onToggle = {
-                        db.collection("medications").document(med.id)
-                            .update("datesTaken", FieldValue.arrayUnion(selectedDate))
-                    },
-                    onDelete = { db.collection("medications").document(med.id).delete() }
-                )
-            }
-            items(takenMeds, key = { it.id }) { med ->
-                ProfessionalMedCard(med, isTaken = true,
-                    onToggle = {
-                        db.collection("medications").document(med.id)
-                            .update("datesTaken", FieldValue.arrayRemove(selectedDate))
-                    },
-                    onDelete = { db.collection("medications").document(med.id).delete() }
-                )
+            if (medications.isEmpty()) {
+                item { EmptyStateHint("No medications scheduled") }
+            } else {
+                items(items = medications, key = { it.id }) { med ->
+                    val isTaken = med.datesTaken.contains(selectedDate)
+                    ProfessionalMedCard(
+                        med = med,
+                        isTaken = isTaken,
+                        onToggle = { viewModel.toggleMedicationTaken(med, selectedDate) },
+                        onDelete = { viewModel.deleteEvent(med.id) }
+                    )
+                }
             }
         }
 
-        if (isMedSheetOpen) AddMedSheet(onDismiss = { isMedSheetOpen = false }, db, userId)
-        if (isApptSheetOpen) AddApptSheet(onDismiss = { isApptSheetOpen = false }, db, userId, selectedDate)
+        if (isMedSheetOpen) {
+            AddMedSheet(
+                onDismiss = { isMedSheetOpen = false },
+                onSave = { name, dose ->
+                    viewModel.addNewEvent(name, dose, "09:00 AM", selectedDate, "MEDICATION", RecurrenceType.DAILY)
+                }
+            )
+        }
+
+        if (isApptSheetOpen) {
+            AddApptSheet(
+                onDismiss = { isApptSheetOpen = false },
+                onSave = { title, time, type ->
+                    viewModel.addNewEvent(title, "Doctor Appointment", time, selectedDate, "APPOINTMENT", type)
+                }
+            )
+        }
     }
 }
 
-// --- REMAINING UI COMPONENTS STAY THE SAME ---
+// --- CALENDAR STRIP ---
+
 @Composable
-fun CalendarStrip(selectedDate: String, appointments: List<Appointment>, onSelect: (String) -> Unit) {
+fun CalendarStrip(selectedDate: String, allEvents: List<HealthEvent>, onSelect: (String) -> Unit) {
     val sdf = remember { SimpleDateFormat("yyyyMMdd", Locale.getDefault()) }
     val dayFormat = remember { SimpleDateFormat("EEE", Locale.getDefault()) }
     val dateFormat = remember { SimpleDateFormat("dd", Locale.getDefault()) }
@@ -229,11 +186,12 @@ fun CalendarStrip(selectedDate: String, appointments: List<Appointment>, onSelec
         items(dates) { date ->
             val dStr = sdf.format(date)
             val isSelected = dStr == selectedDate
-            val hasEvent = appointments.any { isApptVisibleOnDate(it, dStr) }
+            val hasAppointment = allEvents.any { it.type == "APPOINTMENT" && isEventOnDate(it, dStr) }
 
             Column(
                 Modifier
-                    .width(64.dp).height(90.dp)
+                    .width(64.dp)
+                    .height(95.dp)
                     .clip(RoundedCornerShape(22.dp))
                     .background(if (isSelected) Color(0xFF1B4332) else Color.White)
                     .clickable { onSelect(dStr) }
@@ -244,7 +202,7 @@ fun CalendarStrip(selectedDate: String, appointments: List<Appointment>, onSelec
                 Text(dayFormat.format(date), color = if (isSelected) Color.White.copy(0.7f) else Color.Gray, fontSize = 12.sp)
                 Text(dateFormat.format(date), color = if (isSelected) Color.White else Color.Black, fontSize = 20.sp, fontWeight = FontWeight.Bold)
 
-                if (hasEvent) {
+                if (hasAppointment) {
                     Box(Modifier.padding(top = 4.dp).size(6.dp).background(if (isSelected) Color(0xFFB7E4C7) else Color(0xFF2D6A4F), CircleShape))
                 }
             }
@@ -252,8 +210,34 @@ fun CalendarStrip(selectedDate: String, appointments: List<Appointment>, onSelec
     }
 }
 
+private fun isEventOnDate(event: HealthEvent, targetDate: String): Boolean {
+    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+    return try {
+        val target = sdf.parse(targetDate) ?: return false
+        val start = sdf.parse(event.startDate) ?: return false
+        if (target.before(start) && targetDate != event.startDate) return false
+
+        when (event.recurrence) {
+            RecurrenceType.DAILY -> true
+            RecurrenceType.WEEKLY -> {
+                val calT = Calendar.getInstance().apply { time = target }
+                val calS = Calendar.getInstance().apply { time = start }
+                calT.get(Calendar.DAY_OF_WEEK) == calS.get(Calendar.DAY_OF_WEEK)
+            }
+            RecurrenceType.MONTHLY -> {
+                val calT = Calendar.getInstance().apply { time = target }
+                val calS = Calendar.getInstance().apply { time = start }
+                calT.get(Calendar.DAY_OF_MONTH) == calS.get(Calendar.DAY_OF_MONTH)
+            }
+            else -> event.startDate == targetDate
+        }
+    } catch (e: Exception) { false }
+}
+
+// --- UI CARDS ---
+
 @Composable
-fun ProfessionalDashboard(meds: List<MedicationData>, selectedDate: String) {
+fun ProfessionalDashboard(meds: List<HealthEvent>, selectedDate: String) {
     val completed = meds.count { it.datesTaken.contains(selectedDate) }
     val total = meds.size
     val progress = if (total > 0) completed.toFloat() / total else 0f
@@ -264,98 +248,109 @@ fun ProfessionalDashboard(meds: List<MedicationData>, selectedDate: String) {
                 Text("Daily Progress", color = Color.White.copy(0.7f), fontSize = 14.sp)
                 Text("$completed / $total Meds", color = Color.White, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             }
-            CircularProgressIndicator(progress = progress, color = Color(0xFFB7E4C7), trackColor = Color.White.copy(0.1f))
+            CircularProgressIndicator(progress = { progress }, color = Color(0xFFB7E4C7), trackColor = Color.White.copy(0.1f))
         }
     }
 }
 
 @Composable
-fun ProfessionalMedCard(med: MedicationData, isTaken: Boolean, onToggle: () -> Unit, onDelete: () -> Unit) {
+fun ProfessionalMedCard(med: HealthEvent, isTaken: Boolean, onToggle: () -> Unit, onDelete: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onToggle) {
-                Icon(
-                    imageVector = if (isTaken) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked,
-                    contentDescription = null,
-                    tint = if (isTaken) Color(0xFF2D6A4F) else Color.Gray
-                )
+                Icon(imageVector = if (isTaken) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isTaken) Color(0xFF2D6A4F) else Color.Gray)
             }
             Column(Modifier.weight(1f)) {
-                Text(med.name, fontWeight = FontWeight.Bold, color = if (isTaken) Color.Gray else Color.Black)
-                Text(med.dosage, fontSize = 12.sp, color = Color.Gray)
+                Text(med.title, fontWeight = FontWeight.Bold, color = if (isTaken) Color.Gray else Color.Black)
+                Text(med.subtitle, fontSize = 12.sp, color = Color.Gray)
             }
-            IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, null, tint = Color.Red.copy(0.3f)) }
+            IconButton(onClick = onDelete) {
+                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(0.3f))
+            }
         }
     }
 }
 
 @Composable
-fun ProfessionalApptCard(appt: Appointment, onDismiss: () -> Unit) {
+fun ProfessionalApptCard(appt: HealthEvent, onDismiss: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5))) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(Icons.Default.MedicalServices, null, tint = Color(0xFF059669))
+            Icon(imageVector = Icons.Default.MedicalServices, contentDescription = null, tint = Color(0xFF059669))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(appt.title, fontWeight = FontWeight.Bold, color = Color(0xFF064E3B))
-                Text("${appt.time} • ${appt.type.name}", fontSize = 12.sp, color = Color(0xFF059669))
+                Text("${appt.time} • ${appt.recurrence}", fontSize = 12.sp, color = Color(0xFF059669))
             }
-            IconButton(onClick = onDismiss) { Icon(Icons.Default.Delete, null, tint = Color.Red.copy(0.3f)) }
+            IconButton(onClick = onDismiss) {
+                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(0.3f))
+            }
         }
     }
 }
 
-@Composable fun SectionHeader(title: String, count: Int, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+@Composable
+fun SectionHeader(title: String, icon: ImageVector) {
     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(icon, null, Modifier.size(18.dp), tint = Color.Gray)
+        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Gray)
         Text(title, Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Gray)
     }
 }
 
-@Composable fun EmptyStateHint(text: String) {
+@Composable
+fun EmptyStateHint(text: String) {
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Color.LightGray, fontSize = 14.sp)
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+// --- UPDATED BOTTOM SHEETS (Keyboard & Scroll Fix) ---
+
 @Composable
-fun AddMedSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String) {
+fun AddMedSheet(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
     var name by remember { mutableStateOf("") }
     var dose by remember { mutableStateOf("") }
+    val scrollState = rememberScrollState()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(24.dp).padding(bottom = 32.dp).navigationBarsPadding()) {
+        Column(
+            Modifier
+                .padding(24.dp)
+                .imePadding() // Pushes content above keyboard
+                .navigationBarsPadding()
+                .verticalScroll(scrollState) // Allows scrolling when keyboard is open
+        ) {
             Text("New Medication", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Medicine Name") }, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = dose, onValueChange = { dose = it }, label = { Text("Dose (e.g. 500mg)") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Medicine Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
+            OutlinedTextField(value = dose, onValueChange = { dose = it }, label = { Text("Dose (e.g. 500mg)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
             Button(
-                onClick = {
-                    if (name.isNotBlank()) {
-                        val ref = db.collection("medications").document()
-                        val newMed = MedicationData(id = ref.id, userId = userId, name = name, dosage = dose)
-                        ref.set(newMed)
-                        onDismiss()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                onClick = { if (name.isNotBlank()) { onSave(name, dose); onDismiss() } },
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
             ) { Text("Save Medication") }
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AddApptSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String, selectedDate: String) {
+fun AddApptSheet(onDismiss: () -> Unit, onSave: (String, String, RecurrenceType) -> Unit) {
     var title by remember { mutableStateOf("") }
     var time by remember { mutableStateOf("10:00 AM") }
     var type by remember { mutableStateOf(RecurrenceType.ONETIME) }
     val context = LocalContext.current
+    val scrollState = rememberScrollState()
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(Modifier.padding(24.dp).padding(bottom = 32.dp).navigationBarsPadding()) {
+        Column(
+            Modifier
+                .padding(24.dp)
+                .imePadding()
+                .navigationBarsPadding()
+                .verticalScroll(scrollState)
+        ) {
             Text("Schedule Checkup", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Reason / Doctor") }, modifier = Modifier.fillMaxWidth())
+            Spacer(Modifier.height(16.dp))
+            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Reason / Doctor") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
 
             Surface(
                 onClick = {
@@ -369,7 +364,11 @@ fun AddApptSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String, s
                 shape = RoundedCornerShape(12.dp),
                 color = Color(0xFFF1F3F4)
             ) {
-                Text("Time: $time", Modifier.padding(16.dp))
+                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color.Gray)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Time: $time")
+                }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -377,48 +376,16 @@ fun AddApptSheet(onDismiss: () -> Unit, db: FirebaseFirestore, userId: String, s
                     FilterChip(
                         selected = type == rType,
                         onClick = { type = rType },
-                        label = { Text(rType.name.lowercase()) }
+                        label = { Text(rType.name.lowercase().replaceFirstChar { it.uppercase() }) }
                     )
                 }
             }
 
             Button(
-                onClick = {
-                    if (title.isNotBlank()) {
-                        val ref = db.collection("appointments").document()
-                        val newAppt = Appointment(id = ref.id, userId = userId, title = title, date = selectedDate, time = time, type = type)
-                        ref.set(newAppt)
-                        onDismiss()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
+                onClick = { if (title.isNotBlank()) { onSave(title, time, type); onDismiss() } },
+                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
             ) { Text("Schedule") }
         }
     }
-}
-
-fun isApptVisibleOnDate(appt: Appointment, targetDate: String): Boolean {
-    if (appt.date.isBlank() || targetDate.isBlank()) return false
-    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
-    return try {
-        val target = sdf.parse(targetDate) ?: return false
-        val base = sdf.parse(appt.date) ?: return false
-        if (target.before(base) && targetDate != appt.date) return false
-
-        when (appt.type) {
-            RecurrenceType.ONETIME, RecurrenceType.ONE_TIME -> appt.date == targetDate
-            RecurrenceType.DAILY -> true
-            RecurrenceType.WEEKLY -> {
-                val calT = Calendar.getInstance().apply { time = target }
-                val calB = Calendar.getInstance().apply { time = base }
-                calT.get(Calendar.DAY_OF_WEEK) == calB.get(Calendar.DAY_OF_WEEK)
-            }
-            RecurrenceType.MONTHLY -> {
-                val calT = Calendar.getInstance().apply { time = target }
-                val calB = Calendar.getInstance().apply { time = base }
-                calT.get(Calendar.DAY_OF_MONTH) == calB.get(Calendar.DAY_OF_MONTH)
-            }
-        }
-    } catch (e: Exception) { false }
 }
