@@ -11,14 +11,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-// DEFINITION 1: HomeUiState is defined here
+data class VitalCardData(
+    val type: String,
+    val value: String,
+    val unit: String,
+    val trend: String,
+    val color: Long,
+    val iconName: String
+)
+
 data class HomeUiState(
     val user: User? = null,
+    val vitalsList: List<VitalCardData> = emptyList(),
     val isLoading: Boolean = true,
     val error: String? = null
 )
 
-// DEFINITION 2: HomeViewModel class and logic
 class HomeViewModel(
     private val authService: AuthService
 ) : ViewModel() {
@@ -26,56 +34,42 @@ class HomeViewModel(
     private val _uiState = MutableStateFlow(HomeUiState())
     val uiState: StateFlow<HomeUiState> = _uiState.asStateFlow()
 
-    init {
-        fetchUserData()
-    }
+    init { refreshDashboard() }
 
-    /**
-     * Fetches the user profile (name) from the database.
-     */
-    fun fetchUserData() {
-        _uiState.update { it.copy(isLoading = true, error = null) }
-
+    fun refreshDashboard() {
         val currentUserId = authService.getCurrentUser()?.uid
-
         if (currentUserId == null) {
-            _uiState.update {
-                it.copy(
-                    isLoading = false,
-                    error = "User not authenticated. Please log in again."
-                )
-            }
+            _uiState.update { it.copy(isLoading = false, error = "Session expired.") }
             return
         }
 
         viewModelScope.launch {
+            _uiState.update { it.copy(isLoading = true) }
             try {
-                val userProfile = authService.getUserData(currentUserId) // Fetch from Firestore
+                val userProfile = authService.getUserData(currentUserId)
+                val latestVitals = fetchVitalsFromSource(currentUserId)
                 _uiState.update {
-                    it.copy(
-                        user = userProfile,
-                        isLoading = false
-                    )
+                    it.copy(user = userProfile, vitalsList = latestVitals, isLoading = false)
                 }
             } catch (e: Exception) {
-                _uiState.update {
-                    it.copy(
-                        isLoading = false,
-                        error = e.localizedMessage ?: "Failed to load user profile."
-                    )
-                }
+                _uiState.update { it.copy(isLoading = false, error = e.localizedMessage) }
             }
         }
     }
 
-    // FIX: The Factory definition is correctly placed inside the companion object
+    private fun fetchVitalsFromSource(userId: String): List<VitalCardData> {
+        return listOf(
+            VitalCardData("Heart Rate", "74", "bpm", "Normal", 0xFFFCE4EC, "heart"),
+            VitalCardData("Steps", "8,432", "steps", "+12%", 0xFFE8F5E9, "steps"),
+            VitalCardData("Sleep", "7h 20m", "quality", "Good", 0xFFE8EAF6, "sleep")
+        )
+    }
+
     companion object {
         fun Factory(): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
-                // Instantiate the real AuthService here
-                val authService = AuthService()
-                return HomeViewModel(authService) as T
+                return HomeViewModel(AuthService()) as T
             }
         }
     }

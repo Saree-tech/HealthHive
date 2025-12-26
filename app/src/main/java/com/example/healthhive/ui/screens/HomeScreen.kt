@@ -1,12 +1,12 @@
 package com.example.healthhive.ui.screens
 
-import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -35,9 +35,12 @@ fun HomeScreen(
     onReportsClick: () -> Unit,
     onTipsClick: () -> Unit,
     onSettingsClick: () -> Unit,
-    viewModel: HomeViewModel = viewModel()
+    onVitalClick: (vitalType: String) -> Unit = {},
+    viewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory())
 ) {
     val uiState by viewModel.uiState.collectAsState()
+
+    // Safely handle the user display name
     val displayName = uiState.user?.userName?.split(" ")?.get(0) ?: "User"
 
     val backgroundGradient = Brush.verticalGradient(
@@ -54,7 +57,11 @@ fun HomeScreen(
             }
         }
     ) { paddingValues ->
-        Box(modifier = Modifier.fillMaxSize().background(brush = backgroundGradient).padding(paddingValues)) {
+        Box(modifier = Modifier
+            .fillMaxSize()
+            .background(brush = backgroundGradient)
+            .padding(paddingValues)) {
+
             if (uiState.isLoading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = Color(0xFF2D6A4F))
             } else {
@@ -82,34 +89,41 @@ fun HomeScreen(
                         Spacer(modifier = Modifier.height(24.dp))
                     }
 
-                    // --- UPDATED: MEDICAL SERVICES GRID ---
                     item {
                         SectionHeader(title = "Medical Services", onAction = {})
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                SmallActionCard("Reports", Icons.Default.Assignment, Color(0xFFE8F5E9), onReportsClick, Modifier.weight(1f))
-                                Spacer(Modifier.width(12.dp))
-                                // ADDED: CALENDAR ACCESS HERE
-                                SmallActionCard("Calendar", Icons.Default.CalendarMonth, Color(0xFFFFF3E0), { onNavigateTo("calendar") }, Modifier.weight(1f))
-                            }
-                            Row(modifier = Modifier.fillMaxWidth()) {
-                                SmallActionCard("Plans", Icons.Default.AutoGraph, Color(0xFFE3F2FD), onRecommendationsClick, Modifier.weight(1f))
-                                Spacer(Modifier.width(12.dp))
-                                Box(modifier = Modifier.weight(1f)) // Empty box to keep grid alignment
-                            }
+                        Row(modifier = Modifier.fillMaxWidth()) {
+                            SmallActionCard("Reports", Icons.Default.Assignment, Color(0xFFE8F5E9), onReportsClick, Modifier.weight(1f))
+                            Spacer(Modifier.width(12.dp))
+                            SmallActionCard("Calendar", Icons.Default.CalendarMonth, Color(0xFFFFF3E0), { onNavigateTo("calendar") }, Modifier.weight(1f))
                         }
                         Spacer(modifier = Modifier.height(24.dp))
                     }
 
+                    // --- REWRITTEN DYNAMIC VITALS SECTION ---
                     item {
-                        SectionHeader(title = "Live Vitals", onAction = {})
+                        SectionHeader(title = "Live Vitals", onAction = { onVitalClick("All") })
                         LazyRow(
                             contentPadding = PaddingValues(vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(12.dp)
                         ) {
-                            item { VitalCard("Steps", "8,432", Icons.Default.DirectionsRun, Color(0xFFE8F5E9)) }
-                            item { VitalCard("Heart", "74 bpm", Icons.Default.Favorite, Color(0xFFFCE4EC)) }
-                            item { VitalCard("Sleep", "7h 20m", Icons.Default.Bedtime, Color(0xFFE8EAF6)) }
+                            // FIXED: Using uiState.vitalsList to map icons and values dynamically
+                            items(uiState.vitalsList) { vital ->
+                                // Determine the icon based on the iconName from ViewModel
+                                val icon = when(vital.iconName) {
+                                    "heart" -> Icons.Default.Favorite
+                                    "steps" -> Icons.Default.DirectionsRun
+                                    "sleep" -> Icons.Default.Bedtime
+                                    else -> Icons.Default.MonitorHeart
+                                }
+
+                                VitalCard(
+                                    label = vital.type,
+                                    value = "${vital.value} ${if(vital.unit != "quality" && vital.unit != "steps") vital.unit else ""}",
+                                    icon = icon,
+                                    color = Color(vital.color),
+                                    onClick = { onVitalClick(vital.type) }
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.height(24.dp))
                     }
@@ -125,37 +139,14 @@ fun HomeScreen(
     }
 }
 
-// --- HELPER COMPONENTS REMAIN THE SAME ---
-
-@Composable
-fun SmallActionCard(title: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier) {
-    Card(
-        onClick = onClick,
-        modifier = modifier.height(80.dp),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Row(
-            Modifier.fillMaxSize().padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Start
-        ) {
-            Surface(Modifier.size(40.dp), shape = CircleShape, color = color) {
-                Icon(icon, null, Modifier.padding(8.dp), tint = Color.DarkGray)
-            }
-            Spacer(Modifier.width(12.dp))
-            Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
-        }
-    }
-}
+// --- HELPER COMPONENTS REMAIN INTACT ---
 
 @Composable
 fun HomeHeader(name: String, onProfileClick: () -> Unit) {
     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Column {
-            Text("Welcome back,", style = MaterialTheme.typography.bodyLarge, color = Color.Gray)
-            Text(name, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
+            Text("Welcome back,", fontSize = 16.sp, color = Color.Gray)
+            Text(name, fontSize = 28.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
         }
         Surface(
             Modifier.size(48.dp).clickable { onProfileClick() },
@@ -186,7 +177,7 @@ fun HealthScoreCard(score: Float) {
             Spacer(Modifier.width(20.dp))
             Column {
                 Text("Health Score", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                Text("You're doing better than 80% of users!", color = Color.Gray, fontSize = 13.sp)
+                Text("Your health is improving!", color = Color.Gray, fontSize = 13.sp)
             }
         }
     }
@@ -213,17 +204,36 @@ fun MainFeatureCard(title: String, subtitle: String, icon: ImageVector, onClick:
 }
 
 @Composable
-fun VitalCard(label: String, value: String, icon: ImageVector, color: Color) {
+fun VitalCard(label: String, value: String, icon: ImageVector, color: Color, onClick: () -> Unit) {
     Card(
-        Modifier.width(130.dp),
+        modifier = Modifier.width(140.dp).clickable { onClick() },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = color.copy(0.4f))
     ) {
         Column(Modifier.padding(16.dp)) {
-            Icon(icon, null, modifier = Modifier.size(20.dp))
+            Icon(icon, null, modifier = Modifier.size(24.dp))
             Spacer(Modifier.height(8.dp))
             Text(value, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             Text(label, fontSize = 12.sp)
+        }
+    }
+}
+
+@Composable
+fun SmallActionCard(title: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier) {
+    Card(
+        onClick = onClick,
+        modifier = modifier.height(80.dp),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Row(Modifier.fillMaxSize().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Surface(Modifier.size(40.dp), shape = CircleShape, color = color) {
+                Icon(icon, null, Modifier.padding(8.dp), tint = Color.DarkGray)
+            }
+            Spacer(Modifier.width(12.dp))
+            Text(title, fontWeight = FontWeight.Bold, fontSize = 14.sp)
         }
     }
 }
@@ -233,8 +243,7 @@ fun NewsCard(title: String, desc: String, accentColor: Color) {
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.White),
-        elevation = CardDefaults.cardElevation(1.dp)
+        colors = CardDefaults.cardColors(containerColor = Color.White)
     ) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(60.dp).background(accentColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
