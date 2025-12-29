@@ -17,9 +17,6 @@ class AuthService {
     private val storage: FirebaseStorage = FirebaseStorage.getInstance()
     private val usersCollection = firestore.collection("users")
 
-    /**
-     * Logs in an existing user with email and password.
-     */
     suspend fun login(email: String, password: String): FirebaseUser {
         return try {
             val result = auth.signInWithEmailAndPassword(email, password).await()
@@ -29,24 +26,16 @@ class AuthService {
         }
     }
 
-    /**
-     * Creates a new user, updates their Firebase Auth profile,
-     * and initializes their Firestore document.
-     */
     suspend fun signup(email: String, password: String, userName: String): FirebaseUser {
         return try {
-            // 1. Create the Auth User in Firebase
             val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val firebaseUser = authResult.user
-                ?: throw Exception("Signup failed: User object is null.")
+            val firebaseUser = authResult.user ?: throw Exception("Signup failed.")
 
-            // 2. Update the internal Firebase Auth DisplayName
             val profileUpdates = UserProfileChangeRequest.Builder()
                 .setDisplayName(userName)
                 .build()
             firebaseUser.updateProfile(profileUpdates).await()
 
-            // 3. Create the User Data Model for Firestore
             val newUser = User(
                 id = firebaseUser.uid,
                 userName = userName,
@@ -54,9 +43,7 @@ class AuthService {
                 registrationTimestamp = System.currentTimeMillis()
             )
 
-            // 4. Save the document to the "users" collection using the UID as the ID
             usersCollection.document(firebaseUser.uid).set(newUser).await()
-
             firebaseUser
         } catch (e: Exception) {
             throw e
@@ -64,25 +51,37 @@ class AuthService {
     }
 
     /**
-     * Fetches a complete User object from Firestore.
+     * NEW/CRITICAL: Updates existing user data in Firestore.
+     * This is what your EditProfile screen needs to call.
      */
+    suspend fun updateUserProfile(userId: String, updates: Map<String, Any>) {
+        try {
+            usersCollection.document(userId).update(updates).await()
+
+            // If the name was updated, also update Firebase Auth internal profile
+            if (updates.containsKey("userName")) {
+                val profileUpdates = UserProfileChangeRequest.Builder()
+                    .setDisplayName(updates["userName"] as String)
+                    .build()
+                auth.currentUser?.updateProfile(profileUpdates)?.await()
+            }
+        } catch (e: Exception) {
+            throw Exception("Failed to update profile: ${e.localizedMessage}")
+        }
+    }
+
     suspend fun getUserData(userId: String): User {
         return try {
             val snapshot = usersCollection.document(userId).get().await()
             if (!snapshot.exists()) {
-                throw Exception("User profile document not found in Firestore.")
+                throw Exception("User profile document not found.")
             }
-            // Maps the Firestore fields (like userName) to the Kotlin User data class
-            snapshot.toObject(User::class.java)
-                ?: throw Exception("Failed to parse User profile data.")
+            snapshot.toObject(User::class.java) ?: throw Exception("Failed to parse User.")
         } catch (e: Exception) {
             throw e
         }
     }
 
-    /**
-     * Uploads an image to Firebase Storage and returns the public URL.
-     */
     suspend fun uploadProfilePicture(userId: String, imageUri: Uri): String {
         return try {
             val storageRef = storage.reference
@@ -90,15 +89,17 @@ class AuthService {
                 .child("$userId.jpg")
 
             storageRef.putFile(imageUri).await()
-            storageRef.downloadUrl.await().toString()
+            val downloadUrl = storageRef.downloadUrl.await().toString()
+
+            // Logic Check: After uploading to storage, we MUST update the Firestore URL
+            updateUserProfile(userId, mapOf("profilePictureUrl" to downloadUrl))
+
+            downloadUrl
         } catch (e: Exception) {
             throw Exception("Storage error: ${e.localizedMessage}")
         }
     }
 
-    /**
-     * Sends a password reset email to the user.
-     */
     suspend fun sendPasswordResetEmail(email: String) {
         try {
             auth.sendPasswordResetEmail(email).await()
@@ -107,16 +108,8 @@ class AuthService {
         }
     }
 
-    /**
-     * Gets the currently logged-in Firebase User.
-     */
-    fun getCurrentUser(): FirebaseUser? {
-        return auth.currentUser
-    }
+    fun getCurrentUser(): FirebaseUser? = auth.currentUser
 
-    /**
-     * Logs the user out.
-     */
     fun signOut() {
         auth.signOut()
     }

@@ -1,3 +1,5 @@
+// File: com/example/healthhive/ui/screens/EditProfileScreen.kt
+
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.example.healthhive.ui.screens
@@ -26,7 +28,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
-import com.example.healthhive.data.model.User
 import com.example.healthhive.viewmodel.ProfileViewModel
 
 @Composable
@@ -76,20 +77,26 @@ fun EditProfileScreen(
                 },
                 actions = {
                     if (uiState.isLoading) {
-                        CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = Color(0xFF2D6A4F))
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            strokeWidth = 2.dp,
+                            color = Color(0xFF2D6A4F)
+                        )
                         Spacer(Modifier.width(16.dp))
                     } else {
                         TextButton(onClick = {
-                            val updated = uiState.user?.copy(
-                                userName = name,
+                            // FIXED: Call the updated updateProfile that handles multiple fields
+                            // We pass all fields to the ViewModel to be saved to Firestore
+                            viewModel.updateProfile(
+                                name = name,
                                 age = age,
                                 weight = weight,
                                 height = height,
                                 bloodType = bloodType,
                                 allergies = allergies,
-                                medicalHistory = medicalHistory
-                            ) ?: User()
-                            viewModel.updateProfile(updated) { onNavigateBack() }
+                                history = medicalHistory,
+                                onSuccess = { onNavigateBack() }
+                            )
                         }) {
                             Text("SAVE", fontWeight = FontWeight.Black, color = Color(0xFF2D6A4F))
                         }
@@ -143,7 +150,6 @@ fun EditProfileScreen(
                     )
                 }
 
-                // Camera overlay icon
                 Surface(
                     shape = CircleShape,
                     color = Color(0xFF2D6A4F),
@@ -215,8 +221,6 @@ fun EditProfileScreen(
         }
     }
 }
-
-// THIS WAS MISSING - ADD THIS AT THE BOTTOM OF YOUR FILE
 
 @Composable
 fun ProfileSectionTitle(title: String) {

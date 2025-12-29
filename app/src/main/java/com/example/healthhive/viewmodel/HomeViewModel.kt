@@ -1,4 +1,3 @@
-// File: com/example/healthhive/viewmodel/HomeViewModel.kt
 package com.example.healthhive.viewmodel
 
 import android.app.Application
@@ -15,9 +14,6 @@ import com.google.firebase.firestore.Query
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
-/**
- * Data class representing the state of the Home Screen.
- */
 data class HomeUiState(
     val user: User? = null,
     val vitalsList: List<VitalCardData> = emptyList(),
@@ -47,16 +43,11 @@ class HomeViewModel(
     private val cacheManager = LocalCacheManager(application)
 
     init {
-        // Start real-time listeners for both Profile and Vitals
         listenToUserProfile()
         listenToLiveVitals()
         observeCachedMood()
     }
 
-    /**
-     * UPDATED: Real-time listener for the User Profile document.
-     * This ensures the UI updates the moment the profile is created or changed.
-     */
     private fun listenToUserProfile() {
         val currentUserId = authService.getCurrentUser()?.uid ?: return
 
@@ -79,9 +70,6 @@ class HomeViewModel(
             }
     }
 
-    /**
-     * Observes the locally cached mood from DataStore/Preferences.
-     */
     private fun observeCachedMood() {
         viewModelScope.launch {
             cacheManager.getMood.collect { mood ->
@@ -90,9 +78,6 @@ class HomeViewModel(
         }
     }
 
-    /**
-     * Updates mood in UI and local storage.
-     */
     fun updateMood(mood: String) {
         viewModelScope.launch {
             _uiState.update { it.copy(selectedMood = mood) }
@@ -100,16 +85,10 @@ class HomeViewModel(
         }
     }
 
-    /**
-     * Triggered manually if the user wants to force a profile refresh.
-     */
     fun refreshDashboard() {
         listenToUserProfile()
     }
 
-    /**
-     * Real-time listener for the vitals sub-collection.
-     */
     private fun listenToLiveVitals() {
         val userId = authService.getCurrentUser()?.uid ?: return
 

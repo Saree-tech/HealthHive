@@ -33,20 +33,23 @@ class ProfileViewModel(
         loadUserProfile()
     }
 
+    /**
+     * Changed to a SnapshotListener so the Profile screen updates
+     * immediately when Home or Edit changes the data.
+     */
     fun loadUserProfile() {
         val userId = authService.getCurrentUser()?.uid ?: return
-        viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true) }
-            try {
-                val document = firestore.collection("users").document(userId).get().await()
-                if (document.exists()) {
-                    val userData = document.toObject(User::class.java)
+        firestore.collection("users").document(userId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    _uiState.update { it.copy(errorMessage = "Sync failed") }
+                    return@addSnapshotListener
+                }
+                if (snapshot != null && snapshot.exists()) {
+                    val userData = snapshot.toObject(User::class.java)
                     _uiState.update { it.copy(user = userData, isLoading = false) }
                 }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = "Load failed") }
             }
-        }
     }
 
     fun uploadProfileImage(uri: Uri) {
@@ -54,32 +57,45 @@ class ProfileViewModel(
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                // 1. Upload to Storage and get Download URL
-                val downloadUrl = authService.uploadProfilePicture(userId, uri)
-
-                if (downloadUrl != null) {
-                    // 2. Update Firestore immediately so the link is permanent
-                    firestore.collection("users").document(userId)
-                        .update("profilePictureUrl", downloadUrl).await()
-
-                    // 3. Update local state
-                    val updatedUser = _uiState.value.user?.copy(profilePictureUrl = downloadUrl)
-                    _uiState.update { it.copy(user = updatedUser, isLoading = false) }
-                }
+                // AuthService already handles the Firestore update in our previous fix
+                authService.uploadProfilePicture(userId, uri)
+                _uiState.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
-                Log.e("ProfileVM", "Upload Error: ${e.message}")
-                _uiState.update { it.copy(isLoading = false, errorMessage = "Image upload failed.") }
+                _uiState.update { it.copy(isLoading = false, errorMessage = e.localizedMessage) }
             }
         }
     }
 
-    fun updateProfile(updatedUser: User, onSuccess: () -> Unit) {
+    /**
+     * FIX: Use update() with a Map to prevent overwriting other fields
+     * like profilePictureUrl or registrationTimestamp.
+     */
+    // Inside ProfileViewModel.kt
+    fun updateProfile(
+        name: String,
+        age: String,
+        weight: String,
+        height: String,
+        bloodType: String,
+        allergies: String,
+        history: String,
+        onSuccess: () -> Unit
+    ) {
         val uid = authService.getCurrentUser()?.uid ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                firestore.collection("users").document(uid).set(updatedUser).await()
-                _uiState.update { it.copy(user = updatedUser, isLoading = false) }
+                val updates = mapOf(
+                    "userName" to name,
+                    "age" to age,
+                    "weight" to weight,
+                    "height" to height,
+                    "bloodType" to bloodType,
+                    "allergies" to allergies,
+                    "medicalHistory" to history
+                )
+                authService.updateUserProfile(uid, updates)
+                _uiState.update { it.copy(isLoading = false) }
                 onSuccess()
             } catch (e: Exception) {
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Update failed.") }
