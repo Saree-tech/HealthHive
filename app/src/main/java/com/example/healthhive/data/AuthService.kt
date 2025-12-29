@@ -5,13 +5,9 @@ import com.example.healthhive.data.model.User
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
 import com.google.firebase.firestore.FirebaseFirestore
-import com.google.firebase.storage.FirebaseStorage // Will work after Step 1
+import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
-import java.lang.Exception
 
-/**
- * Data layer service responsible for Firebase Auth, Firestore, and Storage interactions.
- */
 class AuthService {
 
     private val auth: FirebaseAuth = FirebaseAuth.getInstance()
@@ -28,9 +24,6 @@ class AuthService {
         }
     }
 
-    /**
-     * Creates a new user account and saves the user data to Firestore.
-     */
     suspend fun signup(email: String, password: String, userName: String): FirebaseUser {
         return try {
             val authResult = auth.createUserWithEmailAndPassword(email, password).await()
@@ -59,16 +52,25 @@ class AuthService {
     }
 
     /**
-     * Uploads an image to Firebase Storage and returns the download URL string.
+     * FIXED: Explicitly creates the reference hierarchy and uses .child()
+     * to avoid pathing errors that lead to 404s.
      */
     suspend fun uploadProfilePicture(userId: String, imageUri: Uri): String {
         return try {
-            // Updated to ensure reference is accessed correctly
-            val storageRef = storage.getReference("profile_pictures/$userId.jpg")
+            // Use storage.reference to get the root, then build the path
+            val storageRef = storage.reference
+                .child("profile_pictures")
+                .child("$userId.jpg")
+
+            // Upload file
             storageRef.putFile(imageUri).await()
-            return storageRef.downloadUrl.await().toString()
+
+            // Get URL
+            val url = storageRef.downloadUrl.await().toString()
+            return url
         } catch (e: Exception) {
-            throw Exception("Image upload failed: ${e.message}")
+            // Rethrowing specific message to help debugging
+            throw Exception("Storage error: ${e.localizedMessage}")
         }
     }
 
@@ -83,7 +85,6 @@ class AuthService {
     suspend fun getUserData(userId: String): User {
         return try {
             val snapshot = usersCollection.document(userId).get().await()
-            // FIXED: Explicitly specified User class to resolve inference error
             snapshot.toObject(User::class.java)
                 ?: throw Exception("User profile data not found.")
         } catch (e: Exception) {

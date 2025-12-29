@@ -14,6 +14,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -33,6 +34,12 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+// FIREBASE IMPORTS
+import com.google.firebase.FirebaseApp
+import com.google.firebase.appcheck.FirebaseAppCheck
+import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
+import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
+
 import com.example.healthhive.data.AuthService
 import com.example.healthhive.ui.screens.*
 import com.example.healthhive.ui.theme.HealthHiveTheme
@@ -40,6 +47,7 @@ import com.example.healthhive.viewmodel.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+// Screen Navigation Routes
 sealed class Screen(val route: String) {
     data object Splash : Screen("splash")
     data object Onboarding : Screen("onboarding")
@@ -60,23 +68,38 @@ sealed class Screen(val route: String) {
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        // --- FIREBASE INITIALIZATION ---
+        FirebaseApp.initializeApp(this)
+        val firebaseAppCheck = FirebaseAppCheck.getInstance()
+
+        // Use Debug Provider for Emulators/Testing, Play Integrity for Production
+        // Note: For real devices, PlayIntegrity is preferred.
+        firebaseAppCheck.installAppCheckProviderFactory(
+            DebugAppCheckProviderFactory.getInstance()
+        )
+
         val authService = AuthService()
 
         setContent {
             HealthHiveTheme {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
-                    color = MaterialTheme.colorScheme.background
+                    color = Color(0xFFF8FAF9)
                 ) {
                     val navController = rememberNavController()
                     val context = LocalContext.current
+                    val application = context.applicationContext as android.app.Application
 
-                    // Initializing Shared ViewModels at the Top Level
-                    val vitalsViewModel: VitalsViewModel = viewModel()
                     val profileViewModel: ProfileViewModel = viewModel()
-                    val newsViewModel: HealthNewsViewModel = viewModel() // Added for News Support
+                    val vitalsViewModel: VitalsViewModel = viewModel()
+                    val newsViewModel: HealthNewsViewModel = viewModel()
+
                     val chatViewModel: SymptomCheckerViewModel = viewModel(
-                        factory = SymptomCheckerViewModel.Factory(applicationContext)
+                        factory = SymptomCheckerViewModel.Factory(application)
+                    )
+                    val homeViewModel: HomeViewModel = viewModel(
+                        factory = HomeViewModel.Factory(application)
                     )
 
                     NavHost(
@@ -112,7 +135,7 @@ class MainActivity : ComponentActivity() {
                                 },
                                 vitalsViewModel = vitalsViewModel,
                                 profileViewModel = profileViewModel,
-                                newsViewModel = newsViewModel // Now passing the News ViewModel
+                                newsViewModel = newsViewModel
                             )
                         }
 
@@ -164,7 +187,7 @@ class MainActivity : ComponentActivity() {
                             route = Screen.VitalsDetail.route,
                             arguments = listOf(navArgument("vitalType") { type = NavType.StringType })
                         ) { backStackEntry ->
-                            val vitalType = backStackEntry.arguments?.getString("vitalType") ?: "Health Vital"
+                            val vitalType = backStackEntry.arguments?.getString("vitalType") ?: "Vital"
                             VitalsDetailScreen(
                                 vitalType = vitalType,
                                 onBack = { navController.popBackStack() },
@@ -173,7 +196,6 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(Screen.Tips.route) {
-                            // Fixed: Using the Placeholder instead of a missing NotificationsScreen
                             PlaceholderScreen("Daily Health Tips", navController)
                         }
 
@@ -187,20 +209,21 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// --- SPLASH SCREEN ---
+// ... SplashScreen, AuthScreen, and PlaceholderScreen remain the same ...
+
 @Composable
 fun SplashScreen(navController: NavController, authService: AuthService) {
     val context = LocalContext.current
     val infiniteTransition = rememberInfiniteTransition(label = "splash")
 
     val floatAnim by infiniteTransition.animateFloat(
-        initialValue = -10f, targetValue = 10f,
-        animationSpec = infiniteRepeatable(tween(2500, easing = EaseInOutSine), RepeatMode.Reverse),
+        initialValue = -15f, targetValue = 15f,
+        animationSpec = infiniteRepeatable(tween(2000, easing = EaseInOutSine), RepeatMode.Reverse),
         label = "float"
     )
 
     LaunchedEffect(Unit) {
-        delay(2500)
+        delay(2500) // Branding exposure
         val sharedPrefs = context.getSharedPreferences("health_hive_prefs", Context.MODE_PRIVATE)
         val isOnboardingComplete = sharedPrefs.getBoolean("onboarding_complete", false)
         val currentUser = authService.getCurrentUser()
@@ -218,7 +241,7 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D1B16)),
+            .background(Color(0xFF0D1B16)), // Dark Forest Theme
         contentAlignment = Alignment.Center
     ) {
         Column(
@@ -227,23 +250,23 @@ fun SplashScreen(navController: NavController, authService: AuthService) {
         ) {
             Image(
                 painter = painterResource(id = R.drawable.logo),
-                contentDescription = "Logo",
-                modifier = Modifier.size(130.dp)
+                contentDescription = "HealthHive Logo",
+                modifier = Modifier.size(140.dp)
             )
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(20.dp))
             Text(
                 text = "HealthHive",
                 style = MaterialTheme.typography.displayMedium.copy(
                     fontWeight = FontWeight.Black,
                     color = Color(0xFFD8F3DC),
-                    letterSpacing = 2.sp
+                    letterSpacing = 3.sp
                 )
             )
         }
     }
 }
 
-// --- AUTH SCREEN ---
+// --- AUTH SCREEN LOGIC ---
 @Composable
 fun AuthScreen(navController: NavController, authService: AuthService) {
     var isLogin by remember { mutableStateOf(true) }
@@ -257,17 +280,22 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(30.dp),
+            .padding(24.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.Center
     ) {
         Text(
             text = if (isLogin) "Welcome Back" else "Create Account",
             style = MaterialTheme.typography.headlineLarge,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.ExtraBold,
             color = Color(0xFF1B4332)
         )
-        Spacer(Modifier.height(32.dp))
+        Text(
+            text = if (isLogin) "Sign in to continue your journey" else "Start your personalized health tracking",
+            style = MaterialTheme.typography.bodyMedium,
+            color = Color.Gray,
+            modifier = Modifier.padding(top = 8.dp, bottom = 32.dp)
+        )
 
         if (!isLogin) {
             OutlinedTextField(
@@ -275,9 +303,10 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
                 onValueChange = { userName = it },
                 label = { Text("Full Name") },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(12.dp)
+                shape = RoundedCornerShape(16.dp),
+                leadingIcon = { Icon(Icons.Rounded.Person, null) }
             )
-            Spacer(Modifier.height(12.dp))
+            Spacer(Modifier.height(16.dp))
         }
 
         OutlinedTextField(
@@ -285,9 +314,10 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
             onValueChange = { email = it },
             label = { Text("Email Address") },
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            leadingIcon = { Icon(Icons.Rounded.Email, null) }
         )
-        Spacer(Modifier.height(12.dp))
+        Spacer(Modifier.height(16.dp))
 
         OutlinedTextField(
             value = password,
@@ -295,7 +325,8 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
             label = { Text("Password") },
             visualTransformation = PasswordVisualTransformation(),
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(12.dp)
+            shape = RoundedCornerShape(16.dp),
+            leadingIcon = { Icon(Icons.Rounded.Lock, null) }
         )
         Spacer(Modifier.height(32.dp))
 
@@ -304,6 +335,10 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
         } else {
             Button(
                 onClick = {
+                    if (email.isBlank() || password.isBlank()) {
+                        Toast.makeText(context, "Fields cannot be empty", Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
                     isLoading = true
                     scope.launch {
                         try {
@@ -314,36 +349,40 @@ fun AuthScreen(navController: NavController, authService: AuthService) {
                                 popUpTo(Screen.Auth.route) { inclusive = true }
                             }
                         } catch (e: Exception) {
-                            Toast.makeText(context, e.localizedMessage ?: "Auth Failed", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, e.localizedMessage ?: "Authentication Failed", Toast.LENGTH_SHORT).show()
                         } finally {
                             isLoading = false
                         }
                     }
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
-                shape = RoundedCornerShape(12.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F))
             ) {
-                Text(if (isLogin) "Login" else "Get Started")
+                Text(if (isLogin) "Login" else "Sign Up", fontSize = 16.sp, fontWeight = FontWeight.Bold)
             }
 
-            TextButton(onClick = { isLogin = !isLogin }) {
+            TextButton(
+                onClick = { isLogin = !isLogin },
+                modifier = Modifier.padding(top = 16.dp)
+            ) {
                 Text(
-                    text = if (isLogin) "New here? Sign Up" else "Have an account? Login",
-                    color = Color(0xFF2D6A4F)
+                    text = if (isLogin) "New to HealthHive? Join Now" else "Already have an account? Log In",
+                    color = Color(0xFF2D6A4F),
+                    fontWeight = FontWeight.Medium
                 )
             }
         }
     }
 }
 
-// --- PLACEHOLDER ---
+// --- SHARED PLACEHOLDER SCREEN ---
 @Composable
 fun PlaceholderScreen(title: String, navController: NavController) {
     Scaffold(
         topBar = {
-            TopAppBar(
-                title = { Text(title) },
+            CenterAlignedTopAppBar(
+                title = { Text(title, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = { navController.popBackStack() }) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Back")
@@ -352,8 +391,15 @@ fun PlaceholderScreen(title: String, navController: NavController) {
             )
         }
     ) { padding ->
-        Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-            Text("$title coming soon!", style = MaterialTheme.typography.bodyLarge)
+        Box(
+            modifier = Modifier.fillMaxSize().padding(padding).background(Color(0xFFF8FAF9)),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Icon(Icons.Rounded.Construction, null, Modifier.size(64.dp), tint = Color.LightGray)
+                Spacer(Modifier.height(16.dp))
+                Text("$title is coming soon!", color = Color.Gray)
+            }
         }
     }
 }

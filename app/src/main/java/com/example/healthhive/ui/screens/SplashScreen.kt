@@ -29,58 +29,71 @@ import kotlin.random.Random
 fun SplashScreen() {
     val infiniteTransition = rememberInfiniteTransition(label = "splash_assets")
 
-    // 1. Optimized Floating Animation using graphicsLayer (Hardware Accelerated)
-    val floatingOffset by infiniteTransition.animateFloat(
-        initialValue = -15f,
-        targetValue = 15f,
+    // 1. OBVIOUS ANIMATION: Pulsing Scale (Heartbeat effect)
+    // Much more visible than a simple translation
+    val scale by infiniteTransition.animateFloat(
+        initialValue = 0.95f,
+        targetValue = 1.1f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2500, easing = EaseInOutSine),
+            animation = tween(1500, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
-        ), label = "logo_float"
+        ), label = "logo_scale"
     )
 
-    // 2. Static Background Particles (Optimized to prevent recomposition)
-    val particles = remember {
-        List(15) {
-            ParticleData(
-                x = Random.nextFloat(),
-                y = Random.nextFloat(),
-                radius = Random.nextFloat() * 5f + 2f
-            )
-        }
-    }
+    // 2. Subtle Rotation for extra dynamism
+    val rotation by infiniteTransition.animateFloat(
+        initialValue = -2f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = EaseInOutSine),
+            repeatMode = RepeatMode.Reverse
+        ), label = "logo_rotation"
+    )
 
-    // 3. Shimmer Effect for the Brand Text
+    // 3. Shimmer Effect for Brand Text (Adjusted colors for White Background)
     val shimmerTranslate by infiniteTransition.animateFloat(
         initialValue = 0f,
-        targetValue = 2000f,
+        targetValue = 1000f,
         animationSpec = infiniteRepeatable(
-            animation = tween(3500, easing = LinearEasing),
+            animation = tween(3000, easing = LinearEasing),
             repeatMode = RepeatMode.Restart
         ), label = "text_shimmer"
     )
 
+    // 4. Background Particles (Optimized for light mode)
+    val particles = remember {
+        List(20) {
+            ParticleData(
+                x = Random.nextFloat(),
+                y = Random.nextFloat(),
+                radius = Random.nextFloat() * 4f + 2f,
+                speed = Random.nextFloat() * 0.5f + 0.2f
+            )
+        }
+    }
+
     // Entrance Fade-in
     val alphaAnim = remember { Animatable(0f) }
     LaunchedEffect(Unit) {
-        alphaAnim.animateTo(1f, tween(1000))
+        alphaAnim.animateTo(1f, tween(1200))
     }
 
     Box(
         modifier = Modifier
             .fillMaxSize()
+            // WHITE BACKGROUND with subtle soft grey gradient
             .background(
                 Brush.verticalGradient(
-                    listOf(Color(0xFF0D1B16), Color(0xFF052B1D))
+                    listOf(Color(0xFFFFFFFF), Color(0xFFF8FAF9))
                 )
             ),
         contentAlignment = Alignment.Center
     ) {
-        // --- BACKGROUND LAYER ---
+        // --- BACKGROUND LAYER (Subtle floating dots) ---
         Canvas(modifier = Modifier.fillMaxSize()) {
             particles.forEach { p ->
                 drawCircle(
-                    color = Color(0xFF409167).copy(alpha = 0.15f),
+                    color = Color(0xFF2D6A4F).copy(alpha = 0.08f),
                     radius = p.radius,
                     center = Offset(p.x * size.width, p.y * size.height)
                 )
@@ -93,35 +106,39 @@ fun SplashScreen() {
             verticalArrangement = Arrangement.Center,
             modifier = Modifier
                 .alpha(alphaAnim.value)
-                .graphicsLayer { translationY = floatingOffset } // Efficient translation
+                .graphicsLayer {
+                    scaleX = scale
+                    scaleY = scale
+                    rotationZ = rotation
+                }
         ) {
             Box(contentAlignment = Alignment.Center) {
-                // Glow effect behind logo
+                // Glow effect (Adjusted for white background)
                 Surface(
                     modifier = Modifier
-                        .size(160.dp)
-                        .blur(35.dp),
+                        .size(170.dp)
+                        .blur(40.dp),
                     shape = CircleShape,
-                    color = Color(0xFF52B788).copy(alpha = 0.1f)
+                    color = Color(0xFF2D6A4F).copy(alpha = 0.05f)
                 ) {}
 
                 Image(
                     painter = painterResource(id = R.drawable.logo),
                     contentDescription = "HealthHive Logo",
-                    modifier = Modifier.size(120.dp)
+                    modifier = Modifier.size(130.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(32.dp))
 
-            // Shimmering Text Logic
+            // Shimmering Text Logic (Darker colors to be visible on white)
             val shimmerBrush = Brush.linearGradient(
                 colors = listOf(
-                    Color(0xFFD8F3DC),
-                    Color(0xFF74C69D),
-                    Color(0xFFD8F3DC)
+                    Color(0xFF1B4332), // Dark Green
+                    Color(0xFF52B788), // Light Green
+                    Color(0xFF1B4332)  // Dark Green
                 ),
-                start = Offset(shimmerTranslate - 500f, shimmerTranslate - 500f),
+                start = Offset(shimmerTranslate - 300f, shimmerTranslate - 300f),
                 end = Offset(shimmerTranslate, shimmerTranslate)
             )
 
@@ -129,7 +146,7 @@ fun SplashScreen() {
                 text = "HealthHive",
                 style = MaterialTheme.typography.displayMedium.copy(
                     fontWeight = FontWeight.Black,
-                    letterSpacing = 3.sp,
+                    letterSpacing = 2.sp,
                     brush = shimmerBrush
                 )
             )
@@ -137,15 +154,19 @@ fun SplashScreen() {
             Text(
                 text = "INTELLIGENT WELLNESS",
                 style = MaterialTheme.typography.labelLarge.copy(
-                    color = Color(0xFF95D5B2).copy(alpha = 0.6f),
-                    letterSpacing = 6.sp,
-                    fontWeight = FontWeight.Medium
+                    color = Color(0xFF2D6A4F).copy(alpha = 0.5f),
+                    letterSpacing = 5.sp,
+                    fontWeight = FontWeight.Bold
                 ),
-                modifier = Modifier.padding(top = 8.dp)
+                modifier = Modifier.padding(top = 10.dp)
             )
         }
     }
 }
 
-// Simplified data class for performance
-data class ParticleData(val x: Float, val y: Float, val radius: Float)
+data class ParticleData(
+    val x: Float,
+    val y: Float,
+    val radius: Float,
+    val speed: Float
+)

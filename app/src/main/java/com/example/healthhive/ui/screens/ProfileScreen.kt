@@ -56,55 +56,76 @@ fun ProfileScreen(
             )
         }
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding),
-            contentPadding = PaddingValues(20.dp)
-        ) {
-            item {
-                ProfileHeaderWithStats(
-                    name = uiState.user?.userName ?: "Health Warrior",
-                    email = uiState.user?.email ?: "Syncing...",
-                    age = uiState.user?.age?.ifBlank { "--" } ?: "--",
-                    weight = uiState.user?.weight?.let { "$it kg" } ?: "-- kg",
-                    height = uiState.user?.height?.let { "$it cm" } ?: "-- cm"
-                )
-                Spacer(modifier = Modifier.height(32.dp))
-            }
+        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
+            // Main Content
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(20.dp)
+            ) {
+                item {
+                    ProfileHeaderWithStats(
+                        name = uiState.user?.userName ?: "Loading...",
+                        email = uiState.user?.email ?: "Please wait...",
+                        age = uiState.user?.age ?: "--",
+                        weight = uiState.user?.weight ?: "--",
+                        height = uiState.user?.height ?: "--"
+                    )
+                    Spacer(modifier = Modifier.height(32.dp))
+                }
 
-            item { SectionLabel("Medical Identity") }
-            item {
-                SettingsCard {
-                    StaticInfoItem("Blood Type", uiState.user?.bloodType?.ifBlank { "Not Set" } ?: "Not Set", Icons.Default.Bloodtype, Color(0xFFE63946))
-                    HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFF1F5F9))
-                    StaticInfoItem("Allergies", uiState.user?.allergies?.ifBlank { "None Reported" } ?: "None Reported", Icons.Default.Warning, Color(0xFFFFB703))
-                    HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFF1F5F9))
-                    StaticInfoItem("Medical History", uiState.user?.medicalHistory?.ifBlank { "No records" } ?: "No records", Icons.Default.History, Color(0xFF2D6A4F))
+                item { SectionLabel("Medical Identity") }
+                item {
+                    SettingsCard {
+                        StaticInfoItem("Blood Type", uiState.user?.bloodType ?: "Not Set", Icons.Default.Bloodtype, Color(0xFFE63946))
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFF1F5F9))
+                        StaticInfoItem("Allergies", uiState.user?.allergies ?: "None", Icons.Default.Warning, Color(0xFFFFB703))
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFF1F5F9))
+                        StaticInfoItem("Medical History", uiState.user?.medicalHistory ?: "No records", Icons.Default.History, Color(0xFF2D6A4F))
+                    }
+                }
+
+                item { Spacer(modifier = Modifier.height(24.dp)) }
+
+                item { SectionLabel("Settings") }
+                item {
+                    SettingsCard {
+                        ToggleSettingsItem("Push Notifications", Icons.Default.NotificationsActive, Color(0xFF2D6A4F), isPushEnabled) { isPushEnabled = it }
+                        HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFF1F5F9))
+                        SettingsItem("Help & Support", Icons.Default.SupportAgent, Color(0xFF64748B)) {}
+                    }
+                }
+
+                item {
+                    Spacer(modifier = Modifier.height(40.dp))
+                    LogoutButton { viewModel.logout() }
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                        Text("HealthHive v1.0.22", fontSize = 12.sp, color = Color.LightGray)
+                    }
                 }
             }
 
-            item { Spacer(modifier = Modifier.height(24.dp)) }
-
-            item { SectionLabel("Settings") }
-            item {
-                SettingsCard {
-                    ToggleSettingsItem("Push Notifications", Icons.Default.NotificationsActive, Color(0xFF2D6A4F), isPushEnabled) { isPushEnabled = it }
-                    HorizontalDivider(Modifier.padding(horizontal = 16.dp), thickness = 0.5.dp, color = Color(0xFFF1F5F9))
-                    SettingsItem("Help & Support", Icons.Default.SupportAgent, Color(0xFF64748B)) {}
+            // Loading Overlay
+            if (uiState.isLoading) {
+                Box(modifier = Modifier.fillMaxSize().background(Color.White.copy(alpha = 0.7f)), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = Color(0xFF2D6A4F))
                 }
             }
 
-            item {
-                Spacer(modifier = Modifier.height(40.dp))
-                LogoutButton { viewModel.logout() }
-                Spacer(modifier = Modifier.height(12.dp))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
-                    Text("HealthHive v1.0.22", fontSize = 12.sp, color = Color.LightGray)
+            // Error Snackbar/Text
+            uiState.errorMessage?.let { msg ->
+                Card(
+                    modifier = Modifier.align(Alignment.BottomCenter).padding(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFEF4444))
+                ) {
+                    Text(msg, color = Color.White, modifier = Modifier.padding(8.dp), fontSize = 12.sp)
                 }
             }
         }
     }
 }
 
+// Reusable Components (Keep these the same as your original UI)
 @Composable
 fun ProfileHeaderWithStats(name: String, email: String, age: String, weight: String, height: String) {
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -125,23 +146,21 @@ fun ProfileHeaderWithStats(name: String, email: String, age: String, weight: Str
         ) {
             VerticalStat(age, "Age")
             Box(Modifier.height(30.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-            VerticalStat(weight, "Weight")
+            VerticalStat(weight.let { if (it != "--") "$it kg" else it }, "Weight")
             Box(Modifier.height(30.dp).width(1.dp).background(Color(0xFFE2E8F0)))
-            VerticalStat(height, "Height")
+            VerticalStat(height.let { if (it != "--") "$it cm" else it }, "Height")
         }
     }
 }
 
-@Composable
-fun VerticalStat(value: String, label: String) {
+@Composable fun VerticalStat(value: String, label: String) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, fontSize = 17.sp, fontWeight = FontWeight.Black, color = Color(0xFF1B4332))
+        Text(value, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
         Text(label, fontSize = 12.sp, color = Color.Gray)
     }
 }
 
-@Composable
-fun StaticInfoItem(label: String, value: String, icon: ImageVector, iconColor: Color) {
+@Composable fun StaticInfoItem(label: String, value: String, icon: ImageVector, iconColor: Color) {
     Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.size(36.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, modifier = Modifier.size(18.dp), tint = iconColor)
@@ -154,8 +173,7 @@ fun StaticInfoItem(label: String, value: String, icon: ImageVector, iconColor: C
     }
 }
 
-@Composable
-fun SettingsItem(title: String, icon: ImageVector, iconColor: Color, onClick: () -> Unit) {
+@Composable fun SettingsItem(title: String, icon: ImageVector, iconColor: Color, onClick: () -> Unit) {
     Row(modifier = Modifier.fillMaxWidth().clickable { onClick() }.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.size(36.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, modifier = Modifier.size(18.dp), tint = iconColor)
@@ -166,8 +184,7 @@ fun SettingsItem(title: String, icon: ImageVector, iconColor: Color, onClick: ()
     }
 }
 
-@Composable
-fun ToggleSettingsItem(title: String, icon: ImageVector, iconColor: Color, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
+@Composable fun ToggleSettingsItem(title: String, icon: ImageVector, iconColor: Color, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
     Row(modifier = Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(modifier = Modifier.size(36.dp).background(iconColor.copy(0.1f), CircleShape), contentAlignment = Alignment.Center) {
             Icon(icon, null, modifier = Modifier.size(18.dp), tint = iconColor)
@@ -178,8 +195,7 @@ fun ToggleSettingsItem(title: String, icon: ImageVector, iconColor: Color, check
     }
 }
 
-@Composable
-fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
+@Composable fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -188,13 +204,11 @@ fun SettingsCard(content: @Composable ColumnScope.() -> Unit) {
     ) { Column(content = content) }
 }
 
-@Composable
-fun SectionLabel(text: String) {
+@Composable fun SectionLabel(text: String) {
     Text(text, modifier = Modifier.padding(start = 8.dp, bottom = 8.dp), fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color(0xFF2D6A4F))
 }
 
-@Composable
-fun LogoutButton(onLogout: () -> Unit) {
+@Composable fun LogoutButton(onLogout: () -> Unit) {
     Button(
         onClick = onLogout,
         modifier = Modifier.fillMaxWidth().height(56.dp),

@@ -1,6 +1,7 @@
 package com.example.healthhive.viewmodel
 
 import android.net.Uri
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.healthhive.data.AuthService
@@ -35,38 +36,38 @@ class ProfileViewModel(
     fun loadUserProfile() {
         val userId = authService.getCurrentUser()?.uid ?: return
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, errorMessage = null) }
+            _uiState.update { it.copy(isLoading = true) }
             try {
                 val document = firestore.collection("users").document(userId).get().await()
-                val userData = document.toObject(User::class.java)
-                _uiState.update { it.copy(user = userData, isLoading = false) }
+                if (document.exists()) {
+                    val userData = document.toObject(User::class.java)
+                    _uiState.update { it.copy(user = userData, isLoading = false) }
+                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(isLoading = false, errorMessage = "Failed to sync profile.") }
+                _uiState.update { it.copy(isLoading = false, errorMessage = "Load failed") }
             }
         }
     }
 
-    /**
-     * Handles image selection, upload to Storage, and updating Firestore URL.
-     */
     fun uploadProfileImage(uri: Uri) {
         val userId = authService.getCurrentUser()?.uid ?: return
         viewModelScope.launch {
             _uiState.update { it.copy(isLoading = true) }
             try {
-                // 1. Upload to Firebase Storage
+                // 1. Upload to Storage and get Download URL
                 val downloadUrl = authService.uploadProfilePicture(userId, uri)
 
-                // 2. Update Firestore with new URL
-                val currentUser = _uiState.value.user
-                if (currentUser != null) {
-                    val updatedUser = currentUser.copy(profilePictureUrl = downloadUrl)
-                    firestore.collection("users").document(userId).set(updatedUser).await()
+                if (downloadUrl != null) {
+                    // 2. Update Firestore immediately so the link is permanent
+                    firestore.collection("users").document(userId)
+                        .update("profilePictureUrl", downloadUrl).await()
 
-                    // 3. Update local UI state
+                    // 3. Update local state
+                    val updatedUser = _uiState.value.user?.copy(profilePictureUrl = downloadUrl)
                     _uiState.update { it.copy(user = updatedUser, isLoading = false) }
                 }
             } catch (e: Exception) {
+                Log.e("ProfileVM", "Upload Error: ${e.message}")
                 _uiState.update { it.copy(isLoading = false, errorMessage = "Image upload failed.") }
             }
         }

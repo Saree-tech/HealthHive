@@ -38,13 +38,26 @@ fun EditProfileScreen(
     val scrollState = rememberScrollState()
 
     // Form states
-    var name by remember { mutableStateOf(uiState.user?.userName ?: "") }
-    var age by remember { mutableStateOf(uiState.user?.age ?: "") }
-    var weight by remember { mutableStateOf(uiState.user?.weight ?: "") }
-    var height by remember { mutableStateOf(uiState.user?.height ?: "") }
-    var bloodType by remember { mutableStateOf(uiState.user?.bloodType ?: "") }
-    var allergies by remember { mutableStateOf(uiState.user?.allergies ?: "") }
-    var medicalHistory by remember { mutableStateOf(uiState.user?.medicalHistory ?: "") }
+    var name by remember { mutableStateOf("") }
+    var age by remember { mutableStateOf("") }
+    var weight by remember { mutableStateOf("") }
+    var height by remember { mutableStateOf("") }
+    var bloodType by remember { mutableStateOf("") }
+    var allergies by remember { mutableStateOf("") }
+    var medicalHistory by remember { mutableStateOf("") }
+
+    // Update local state when user data is loaded from ViewModel
+    LaunchedEffect(uiState.user) {
+        uiState.user?.let {
+            name = it.userName
+            age = it.age
+            weight = it.weight
+            height = it.height
+            bloodType = it.bloodType
+            allergies = it.allergies
+            medicalHistory = it.medicalHistory
+        }
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia(),
@@ -109,7 +122,6 @@ fun EditProfileScreen(
                 val imageUrl = uiState.user?.profilePictureUrl
 
                 if (!imageUrl.isNullOrBlank()) {
-                    // Use Coil for URLs
                     AsyncImage(
                         model = imageUrl,
                         contentDescription = "Profile Picture",
@@ -120,7 +132,6 @@ fun EditProfileScreen(
                         contentScale = ContentScale.Crop
                     )
                 } else {
-                    // Use standard Icon for ImageVectors (Prevents the crash)
                     Icon(
                         imageVector = Icons.Default.AccountCircle,
                         contentDescription = "Default Profile",
@@ -132,10 +143,11 @@ fun EditProfileScreen(
                     )
                 }
 
+                // Camera overlay icon
                 Surface(
                     shape = CircleShape,
                     color = Color(0xFF2D6A4F),
-                    modifier = Modifier.size(30.dp),
+                    modifier = Modifier.size(32.dp),
                     border = androidx.compose.foundation.BorderStroke(2.dp, Color.White)
                 ) {
                     Icon(
@@ -145,6 +157,10 @@ fun EditProfileScreen(
                         modifier = Modifier.padding(6.dp)
                     )
                 }
+            }
+
+            if (uiState.isLoading) {
+                Text("Uploading...", fontSize = 12.sp, color = Color(0xFF2D6A4F))
             }
 
             Spacer(modifier = Modifier.height(10.dp))
@@ -188,7 +204,7 @@ fun EditProfileScreen(
                 ProfileSectionTitle("Health History")
                 OutlinedTextField(
                     value = medicalHistory, onValueChange = { medicalHistory = it },
-                    label = { Text("Chronic Conditions / Past Surgeries") },
+                    label = { Text("Conditions / Surgeries") },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
                     minLines = 4,
@@ -200,7 +216,14 @@ fun EditProfileScreen(
     }
 }
 
+// THIS WAS MISSING - ADD THIS AT THE BOTTOM OF YOUR FILE
 @Composable
 fun ProfileSectionTitle(title: String) {
-    Text(title, fontSize = 13.sp, fontWeight = FontWeight.Black, color = Color(0xFF2D6A4F))
+    Text(
+        text = title,
+        fontSize = 13.sp,
+        fontWeight = FontWeight.Black,
+        color = Color(0xFF2D6A4F),
+        modifier = Modifier.padding(bottom = 4.dp)
+    )
 }

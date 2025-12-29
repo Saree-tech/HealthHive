@@ -46,7 +46,9 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
         _selectedDate.value = date
     }
 
-    // --- ADD EVENT WITH ALARM LOGIC ---
+    /**
+     * Creates a new health event, saves it locally, schedules an alarm, and syncs to cloud.
+     */
     fun addNewEvent(title: String, subtitle: String, time: String, date: String, type: String, recurrence: RecurrenceType) {
         val userId = auth.currentUser?.uid ?: return
         val eventId = UUID.randomUUID().toString()
@@ -64,14 +66,9 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
         )
 
         viewModelScope.launch(Dispatchers.IO) {
-            // 1. Save locally
             eventDao.insertEvent(newEvent)
+            scheduleAlarm(newEvent) // Immediate local scheduling
 
-            // 2. Schedule Alarm for BOTH Medications and Appointments
-            // We removed the "if type == MEDICATION" check so both trigger alerts
-            scheduleAlarm(newEvent)
-
-            // 3. Sync to Firebase
             db.collection("health_hub").document(eventId).set(newEvent)
                 .addOnSuccessListener {
                     viewModelScope.launch(Dispatchers.IO) {
@@ -81,19 +78,13 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    fun deleteEvent(eventId: String) {
-        viewModelScope.launch(Dispatchers.IO) {
-            // Find the event in the local DB to cancel the alarm properly
-            val event = eventDao.getEventById(eventId)
-            event?.let { cancelAlarm(it) }
-
-            eventDao.deleteEventById(eventId)
-            db.collection("health_hub").document(eventId).delete()
-        }
-    }
-
+    /**
+     * Toggles the 'taken' status of a medication and manages the alarm state accordingly.
+     */
     fun toggleMedicationTaken(event: HealthEvent, date: String) {
         val currentDates = event.datesTaken.toMutableList()
+        val todayStr = sdf.format(Date())
+
         if (currentDates.contains(date)) {
             currentDates.remove(date)
         } else {
@@ -104,6 +95,14 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
 
         viewModelScope.launch(Dispatchers.IO) {
             eventDao.insertEvent(updatedEvent)
+
+            // If med was taken today, clear the pending alarm
+            if (date == todayStr && currentDates.contains(todayStr)) {
+                cancelAlarm(event)
+            } else if (date == todayStr && !currentDates.contains(todayStr)) {
+                scheduleAlarm(updatedEvent)
+            }
+
             db.collection("health_hub").document(event.id)
                 .update("datesTaken", currentDates)
                 .addOnSuccessListener {
@@ -114,15 +113,32 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
         }
     }
 
-    // --- ALARM MANAGER HELPERS ---
+    fun deleteEvent(eventId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val event = eventDao.getEventById(eventId)
+            event?.let { cancelAlarm(it) }
+
+            eventDao.deleteEventById(eventId)
+            db.collection("health_hub").document(eventId).delete()
+        }
+    }
+
+    // --- ALARM MANAGER LOGIC ---
 
     private fun scheduleAlarm(event: HealthEvent) {
-        val alarmManager = getApplication<Application>().getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val todayStr = sdf.format(Date())
 
+        // 1. SILENT GUARD: Don't schedule if already taken today
+        if (event.type == "MEDICATION" && event.datesTaken.contains(todayStr)) {
+            Log.d("HealthAlarm", "Skipping alarm for ${event.title}: Already taken today.")
+            return
+        }
+
+        val alarmManager = getApplication<Application>().getSystemService(Context.ALARM_SERVICE) as AlarmManager
         val intent = Intent(getApplication(), AlarmReceiver::class.java).apply {
             putExtra("TITLE", event.title)
             putExtra("SUBTITLE", event.subtitle)
-            putExtra("TYPE", event.type) // CRITICAL: Added type so Receiver knows if it's MEDICATION or APPOINTMENT
+            putExtra("TYPE", event.type)
         }
 
         val pendingIntent = PendingIntent.getBroadcast(
@@ -132,32 +148,44 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val calendar = Calendar.getInstance()
         try {
             val dateObj = sdf.parse(event.startDate) ?: Date()
             val timeObj = timeSdf.parse(event.time) ?: return
-
             val timeCal = Calendar.getInstance().apply { time = timeObj }
 
-            calendar.time = dateObj
-            calendar.set(Calendar.HOUR_OF_DAY, timeCal.get(Calendar.HOUR_OF_DAY))
-            calendar.set(Calendar.MINUTE, timeCal.get(Calendar.MINUTE))
-            calendar.set(Calendar.SECOND, 0)
-
-            // If the time has already passed for today, don't trigger unless it's a recurring event
-            if (calendar.before(Calendar.getInstance()) && event.recurrence != RecurrenceType.ONETIME) {
-                calendar.add(Calendar.DATE, 1)
+            val calendar = Calendar.getInstance().apply {
+                time = dateObj
+                set(Calendar.HOUR_OF_DAY, timeCal.get(Calendar.HOUR_OF_DAY))
+                set(Calendar.MINUTE, timeCal.get(Calendar.MINUTE))
+                set(Calendar.SECOND, 0)
             }
 
-            // Using setExactAndAllowWhileIdle to ensure it fires even in Doze mode
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                calendar.timeInMillis,
-                pendingIntent
-            )
-            Log.d("Alarm", "Alarm set for ${event.type}: ${event.title} at ${calendar.time}")
+            val now = Calendar.getInstance()
+
+            // 2. PAST TIME GUARD: Find the next future occurrence
+            if (calendar.before(now)) {
+                when (event.recurrence) {
+                    RecurrenceType.ONETIME, RecurrenceType.ONE_TIME -> {
+                        Log.d("HealthAlarm", "Skipping past one-time event: ${event.title}")
+                        return
+                    }
+                    RecurrenceType.DAILY -> calendar.add(Calendar.DATE, 1)
+                    RecurrenceType.WEEKLY -> calendar.add(Calendar.WEEK_OF_YEAR, 1)
+                    RecurrenceType.MONTHLY -> calendar.add(Calendar.MONTH, 1)
+                }
+            }
+
+            // 3. Final Verification before setting
+            if (calendar.after(now)) {
+                alarmManager.setExactAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    calendar.timeInMillis,
+                    pendingIntent
+                )
+                Log.d("HealthAlarm", "Alarm Set: ${event.title} at ${calendar.time}")
+            }
         } catch (e: Exception) {
-            Log.e("Alarm", "Error parsing date/time", e)
+            Log.e("HealthAlarm", "Error parsing date/time for ${event.title}", e)
         }
     }
 
@@ -172,7 +200,7 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
         )
         if (pendingIntent != null) {
             alarmManager.cancel(pendingIntent)
-            Log.d("Alarm", "Alarm cancelled for ${event.title}")
+            Log.d("HealthAlarm", "Alarm Cancelled: ${event.title}")
         }
     }
 
@@ -199,11 +227,9 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
                                 isSynced = true
                             )
                             eventDao.insertEvent(event)
-
-                            // Re-schedule alarm if it's missing (e.g., after a fresh install/sync)
                             scheduleAlarm(event)
                         } catch (e: Exception) {
-                            Log.e("ViewModel", "Mapping error", e)
+                            Log.e("FirestoreSync", "Mapping error", e)
                         }
                     }
                 }
@@ -231,8 +257,6 @@ class HealthCalendarViewModel(application: Application) : AndroidViewModel(appli
                     calT.get(Calendar.DAY_OF_MONTH) == calB.get(Calendar.DAY_OF_MONTH)
                 }
             }
-        } catch (e: Exception) {
-            false
-        }
+        } catch (e: Exception) { false }
     }
 }

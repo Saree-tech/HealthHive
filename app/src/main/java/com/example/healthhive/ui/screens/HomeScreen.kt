@@ -17,8 +17,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -52,16 +50,16 @@ fun HomeScreen(
     val homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory(context))
     val uriHandler = LocalUriHandler.current
 
+    // Reactive state observation
     val homeUiState by homeViewModel.uiState.collectAsState()
     val profileState by profileViewModel.uiState.collectAsState()
     val vitalsUiState by vitalsViewModel.uiState.collectAsState()
     val newsState by newsViewModel.uiState.collectAsState()
 
-    val fullUserName = profileState.user?.userName ?: "Warrior"
-    val displayName = fullUserName.split(" ").getOrNull(0) ?: "Warrior"
-    val userInitial = fullUserName.take(1).uppercase()
+    val displayName = profileState.user?.userName?.split(" ")?.firstOrNull() ?: "Warrior"
     val profilePicUrl = profileState.user?.profilePictureUrl ?: ""
 
+    // Initial data fetch
     LaunchedEffect(Unit) {
         vitalsViewModel.startListening("All")
     }
@@ -70,10 +68,30 @@ fun HomeScreen(
         containerColor = Color(0xFFF8FAF9),
         bottomBar = {
             NavigationBar(containerColor = Color.White, tonalElevation = 12.dp) {
-                NavigationBarItem(selected = true, onClick = {}, icon = { Icon(Icons.Rounded.Home, null) }, label = { Text("Home") })
-                NavigationBarItem(selected = false, onClick = onSymptomCheckerClick, icon = { Icon(Icons.Rounded.AutoAwesome, null) }, label = { Text("Lumi AI") })
-                NavigationBarItem(selected = false, onClick = onReportsClick, icon = { Icon(Icons.Rounded.Assignment, null) }, label = { Text("Reports") })
-                NavigationBarItem(selected = false, onClick = onSettingsClick, icon = { Icon(Icons.Rounded.Person, null) }, label = { Text("Profile") })
+                NavigationBarItem(
+                    selected = true,
+                    onClick = {},
+                    icon = { Icon(Icons.Rounded.Home, null) },
+                    label = { Text("Home") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onSymptomCheckerClick,
+                    icon = { Icon(Icons.Rounded.AutoAwesome, null) },
+                    label = { Text("Lumi AI") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onReportsClick,
+                    icon = { Icon(Icons.Rounded.Assignment, null) },
+                    label = { Text("Reports") }
+                )
+                NavigationBarItem(
+                    selected = false,
+                    onClick = onSettingsClick,
+                    icon = { Icon(Icons.Rounded.Person, null) },
+                    label = { Text("Profile") }
+                )
             }
         }
     ) { paddingValues ->
@@ -83,11 +101,10 @@ fun HomeScreen(
                 .padding(paddingValues),
             contentPadding = PaddingValues(bottom = 24.dp)
         ) {
-            // 1. Header Section
+            // 1. Header
             item {
                 EnhancedHeader(
                     name = displayName,
-                    initial = userInitial,
                     profilePicUrl = profilePicUrl,
                     onProfileClick = onSettingsClick
                 )
@@ -102,7 +119,7 @@ fun HomeScreen(
                 Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // 3. Health Score Meter
+            // 3. Health Score Card
             item {
                 PremiumHealthScoreCard(score = vitalsUiState.healthScore * 100)
             }
@@ -115,11 +132,11 @@ fun HomeScreen(
                 )
             }
 
-            // 5. Vitals Section (FIXED FOR NEW USERS)
+            // 5. Vitals Section
             item {
                 SectionHeader(title = "Vitals", onAction = { onVitalClick("All") })
 
-                if (vitalsUiState.isLoading) {
+                if (vitalsUiState.isLoading && vitalsUiState.latestVitals.isEmpty()) {
                     Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
                         CircularProgressIndicator(color = Color(0xFF2D6A4F), strokeWidth = 2.dp)
                     }
@@ -128,35 +145,16 @@ fun HomeScreen(
                         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
-                        val history = vitalsUiState.history
-
-                        if (history.isEmpty()) {
-                            // Empty State: Show placeholders so new users can click to add data
-                            val defaultVitals = listOf("Heart Rate", "Steps", "Sleep", "Blood Pressure")
-                            items(defaultVitals) { type ->
-                                ModernVitalCard(
-                                    label = type,
-                                    value = "--",
-                                    type = type,
-                                    isPlaceholder = true,
-                                    onClick = { onVitalClick(type) }
-                                )
-                            }
-                        } else {
-                            // Data State: Show latest recorded values
-                            val latestVitals = history
-                                .groupBy { it.type }
-                                .map { it.value.last() }
-
-                            items(latestVitals) { vital ->
-                                ModernVitalCard(
-                                    label = vital.type,
-                                    value = "${vital.value.toInt()}",
-                                    type = vital.type,
-                                    isPlaceholder = false,
-                                    onClick = { onVitalClick(vital.type) }
-                                )
-                            }
+                        val categories = listOf("Heart Rate", "Blood Pressure", "Steps", "Sleep")
+                        items(categories) { type ->
+                            val value = vitalsUiState.latestVitals[type]
+                            ModernVitalCard(
+                                label = type,
+                                value = if (value != null) value.toInt().toString() else "--",
+                                type = type,
+                                isPlaceholder = value == null,
+                                onClick = { onVitalClick(type) }
+                            )
                         }
                     }
                 }
@@ -180,6 +178,7 @@ fun HomeScreen(
                 SectionHeader(title = "Live Health Insights", onAction = { newsViewModel.fetchNews() })
             }
 
+            // News Feed Logic
             when {
                 newsState.isLoading -> {
                     item {
@@ -212,162 +211,11 @@ fun HomeScreen(
     }
 }
 
-// --- SUB-COMPONENTS ---
-
-@Composable
-fun ModernVitalCard(
-    label: String,
-    value: String,
-    type: String,
-    isPlaceholder: Boolean,
-    onClick: () -> Unit
-) {
-    val icon = when (type) {
-        "Heart Rate" -> Icons.Rounded.Favorite
-        "Blood Pressure" -> Icons.Rounded.Speed
-        "Steps" -> Icons.Rounded.DirectionsRun
-        "Sleep" -> Icons.Rounded.Bedtime
-        else -> Icons.Rounded.MonitorHeart
-    }
-
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.width(150.dp),
-        shape = RoundedCornerShape(24.dp),
-        color = Color.White,
-        border = BorderStroke(1.dp, if (isPlaceholder) Color(0xFFEEEEEE) else Color(0xFFF1F1F1)),
-        shadowElevation = if (isPlaceholder) 0.dp else 2.dp
-    ) {
-        Column(Modifier.padding(20.dp)) {
-            Box(
-                Modifier
-                    .size(40.dp)
-                    .background(if (isPlaceholder) Color(0xFFF5F5F5) else Color(0xFFF0F9F4), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, null, tint = if (isPlaceholder) Color.LightGray else Color(0xFF2D6A4F))
-            }
-            Spacer(Modifier.height(16.dp))
-            Text(
-                text = value,
-                fontWeight = FontWeight.Black,
-                fontSize = 26.sp,
-                color = if (isPlaceholder) Color.LightGray else Color.Black
-            )
-            Text(
-                text = label,
-                fontSize = 13.sp,
-                color = Color.Gray,
-                fontWeight = FontWeight.Medium
-            )
-            if (isPlaceholder) {
-                Text(
-                    text = "Tap to add",
-                    fontSize = 10.sp,
-                    color = Color(0xFF2D6A4F),
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-fun DynamicInsightCard(article: HealthArticle, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(Color.White),
-        border = BorderStroke(1.dp, Color(0xFFF5F5F5))
-    ) {
-        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            AsyncImage(
-                model = article.imageUrl,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(70.dp)
-                    .clip(RoundedCornerShape(16.dp))
-                    .background(Color(0xFFF0F9F4)),
-                contentScale = ContentScale.Crop
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = article.source.name.uppercase(),
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = Color(0xFF2D6A4F)
-                )
-                Text(
-                    text = article.title,
-                    fontWeight = FontWeight.ExtraBold,
-                    fontSize = 15.sp,
-                    color = Color(0xFF1B4332),
-                    maxLines = 2,
-                    lineHeight = 20.sp
-                )
-            }
-            Icon(Icons.Rounded.ChevronRight, null, tint = Color.LightGray)
-        }
-    }
-}
-
-@Composable
-fun PremiumHealthScoreCard(score: Float) {
-    val animatedScore by animateFloatAsState(
-        targetValue = score,
-        animationSpec = tween(durationMillis = 1500, easing = FastOutSlowInEasing),
-        label = "ScoreAnimation"
-    )
-
-    Card(
-        modifier = Modifier.padding(20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(32.dp),
-        colors = CardDefaults.cardColors(Color.White),
-        elevation = CardDefaults.cardElevation(2.dp)
-    ) {
-        Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(90.dp)) {
-                Canvas(modifier = Modifier.size(90.dp)) {
-                    drawArc(
-                        color = Color(0xFFF1F8F5),
-                        startAngle = 0f,
-                        sweepAngle = 360f,
-                        useCenter = false,
-                        style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                    drawArc(
-                        color = Color(0xFF2D6A4F),
-                        startAngle = -90f,
-                        sweepAngle = (animatedScore / 100) * 360f,
-                        useCenter = false,
-                        style = Stroke(width = 8.dp.toPx(), cap = StrokeCap.Round)
-                    )
-                }
-                Text(
-                    text = "${animatedScore.toInt()}%",
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Black,
-                    color = Color(0xFF1B4332)
-                )
-            }
-            Spacer(Modifier.width(20.dp))
-            Column {
-                Text("Health Score", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF1B4332))
-                Text(
-                    text = if (score >= 80) "Peak condition!" else "Log more data to improve.",
-                    color = Color.Gray,
-                    fontSize = 13.sp
-                )
-            }
-        }
-    }
-}
+// --- REWRITTEN SUB-COMPONENTS ---
 
 @Composable
 fun EnhancedHeader(name: String, profilePicUrl: String, onProfileClick: () -> Unit) {
+    val initial = if (name.isNotBlank()) name.take(1).uppercase() else "W"
     Row(
         modifier = Modifier.fillMaxWidth().padding(24.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -377,15 +225,65 @@ fun EnhancedHeader(name: String, profilePicUrl: String, onProfileClick: () -> Un
             Text("Welcome back,", fontSize = 14.sp, color = Color.Gray)
             Text(name, fontSize = 26.sp, fontWeight = FontWeight.Black, color = Color(0xFF1B4332))
         }
-
-        IconButton(
-            onClick = onProfileClick,
-            modifier = Modifier.size(50.dp).clip(CircleShape).background(Color(0xFFD8F3DC))
+        Box(
+            modifier = Modifier.size(50.dp).clip(CircleShape).background(Color(0xFFD8F3DC)).clickable { onProfileClick() },
+            contentAlignment = Alignment.Center
         ) {
             if (profilePicUrl.isNotBlank()) {
-                AsyncImage(model = profilePicUrl, contentDescription = null, contentScale = ContentScale.Crop)
+                AsyncImage(model = profilePicUrl, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             } else {
-                Icon(Icons.Rounded.Person, contentDescription = null, tint = Color(0xFF2D6A4F))
+                Text(text = initial, fontWeight = FontWeight.Bold, color = Color(0xFF2D6A4F), fontSize = 20.sp)
+            }
+        }
+    }
+}
+
+@Composable
+fun ModernVitalCard(label: String, value: String, type: String, isPlaceholder: Boolean, onClick: () -> Unit) {
+    val icon = when (type) {
+        "Heart Rate" -> Icons.Rounded.Favorite
+        "Blood Pressure" -> Icons.Rounded.Speed
+        "Steps" -> Icons.Rounded.DirectionsRun
+        "Sleep" -> Icons.Rounded.Bedtime
+        else -> Icons.Rounded.MonitorHeart
+    }
+    Surface(
+        onClick = onClick,
+        modifier = Modifier.width(150.dp),
+        shape = RoundedCornerShape(24.dp),
+        color = Color.White,
+        border = BorderStroke(1.dp, if (isPlaceholder) Color(0xFFEEEEEE) else Color(0xFFF1F1F1))
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Box(Modifier.size(40.dp).background(if (isPlaceholder) Color(0xFFF5F5F5) else Color(0xFFF0F9F4), CircleShape), contentAlignment = Alignment.Center) {
+                Icon(icon, null, tint = if (isPlaceholder) Color.LightGray else Color(0xFF2D6A4F))
+            }
+            Spacer(Modifier.height(16.dp))
+            Text(text = value, fontWeight = FontWeight.Black, fontSize = 26.sp, color = if (isPlaceholder) Color.LightGray else Color.Black)
+            Text(text = label, fontSize = 13.sp, color = Color.Gray, fontWeight = FontWeight.Medium)
+            if (isPlaceholder) {
+                Text(text = "Tap to add", fontSize = 10.sp, color = Color(0xFF2D6A4F), fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+            }
+        }
+    }
+}
+
+@Composable
+fun PremiumHealthScoreCard(score: Float) {
+    val animatedScore by animateFloatAsState(targetValue = score, animationSpec = tween(1500, easing = FastOutSlowInEasing), label = "ScoreAnimation")
+    Card(modifier = Modifier.padding(20.dp).fillMaxWidth(), shape = RoundedCornerShape(32.dp), colors = CardDefaults.cardColors(Color.White), elevation = CardDefaults.cardElevation(2.dp)) {
+        Row(Modifier.padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(contentAlignment = Alignment.Center, modifier = Modifier.size(90.dp)) {
+                Canvas(modifier = Modifier.size(90.dp)) {
+                    drawArc(color = Color(0xFFF1F8F5), startAngle = 0f, sweepAngle = 360f, useCenter = false, style = Stroke(8.dp.toPx(), cap = StrokeCap.Round))
+                    drawArc(color = Color(0xFF2D6A4F), startAngle = -90f, sweepAngle = (animatedScore / 100) * 360f, useCenter = false, style = Stroke(8.dp.toPx(), cap = StrokeCap.Round))
+                }
+                Text(text = "${animatedScore.toInt()}%", fontSize = 20.sp, fontWeight = FontWeight.Black, color = Color(0xFF1B4332))
+            }
+            Spacer(Modifier.width(20.dp))
+            Column {
+                Text("Health Score", fontWeight = FontWeight.ExtraBold, fontSize = 18.sp, color = Color(0xFF1B4332))
+                Text(text = if (score >= 80) "Peak condition!" else "Log more data to improve.", color = Color.Gray, fontSize = 13.sp)
             }
         }
     }
@@ -400,12 +298,7 @@ fun MoodHandlerSection(selectedMood: String?, onMoodSelected: (String) -> Unit) 
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             items(moods) { (emoji, label) ->
                 val isSelected = selectedMood == label
-                Surface(
-                    onClick = { onMoodSelected(label) },
-                    shape = RoundedCornerShape(16.dp),
-                    color = if (isSelected) Color(0xFF2D6A4F) else Color.White,
-                    border = BorderStroke(1.dp, Color(0xFFEEEEEE))
-                ) {
+                Surface(onClick = { onMoodSelected(label) }, shape = RoundedCornerShape(16.dp), color = if (isSelected) Color(0xFF2D6A4F) else Color.White, border = BorderStroke(1.dp, Color(0xFFEEEEEE))) {
                     Row(Modifier.padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(emoji, fontSize = 20.sp)
                         if (isSelected) {
@@ -421,12 +314,7 @@ fun MoodHandlerSection(selectedMood: String?, onMoodSelected: (String) -> Unit) 
 
 @Composable
 fun LumiAIActionCard(recommendation: String, onClick: () -> Unit) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier.padding(20.dp).fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = Color(0xFF1B4332))
-    ) {
+    Card(onClick = onClick, modifier = Modifier.padding(20.dp).fillMaxWidth(), shape = RoundedCornerShape(24.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFF1B4332))) {
         Row(Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(Modifier.size(44.dp).background(Color(0xFF2D6A4F), CircleShape), contentAlignment = Alignment.Center) {
                 Icon(Icons.Rounded.AutoAwesome, null, tint = Color.White)
@@ -434,10 +322,7 @@ fun LumiAIActionCard(recommendation: String, onClick: () -> Unit) {
             Spacer(Modifier.width(16.dp))
             Column(Modifier.weight(1f)) {
                 Text("Lumi Health AI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                Text(
-                    text = recommendation.ifBlank { "Analyzing your health trends..." },
-                    color = Color.White.copy(0.7f), fontSize = 12.sp, maxLines = 1
-                )
+                Text(text = recommendation.ifBlank { "Analyzing your health trends..." }, color = Color.White.copy(0.7f), fontSize = 12.sp, maxLines = 1)
             }
             Icon(Icons.Rounded.ChevronRight, null, tint = Color.White)
         }
@@ -445,14 +330,29 @@ fun LumiAIActionCard(recommendation: String, onClick: () -> Unit) {
 }
 
 @Composable
-fun ServiceTile(title: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier) {
-    Surface(
+fun DynamicInsightCard(article: HealthArticle, onClick: () -> Unit) {
+    Card(
         onClick = onClick,
-        modifier = modifier.height(100.dp),
+        modifier = Modifier.padding(horizontal = 20.dp).fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        color = Color.White,
+        colors = CardDefaults.cardColors(Color.White),
         border = BorderStroke(1.dp, Color(0xFFF5F5F5))
     ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            AsyncImage(model = article.imageUrl, contentDescription = null, modifier = Modifier.size(70.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFFF0F9F4)), contentScale = ContentScale.Crop)
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(text = article.source.name.uppercase(), fontSize = 10.sp, fontWeight = FontWeight.Bold, color = Color(0xFF2D6A4F))
+                Text(text = article.title, fontWeight = FontWeight.ExtraBold, fontSize = 15.sp, color = Color(0xFF1B4332), maxLines = 2, lineHeight = 20.sp)
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = Color.LightGray)
+        }
+    }
+}
+
+@Composable
+fun ServiceTile(title: String, icon: ImageVector, color: Color, onClick: () -> Unit, modifier: Modifier) {
+    Surface(onClick = onClick, modifier = modifier.height(100.dp), shape = RoundedCornerShape(24.dp), color = Color.White, border = BorderStroke(1.dp, Color(0xFFF5F5F5))) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.Center, horizontalAlignment = Alignment.CenterHorizontally) {
             Icon(icon, null, tint = Color(0xFF2D6A4F))
             Spacer(Modifier.height(8.dp))
@@ -463,14 +363,8 @@ fun ServiceTile(title: String, icon: ImageVector, color: Color, onClick: () -> U
 
 @Composable
 fun SectionHeader(title: String, onAction: () -> Unit) {
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+    Row(modifier = Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
         Text(title, fontWeight = FontWeight.Black, fontSize = 18.sp, color = Color(0xFF1B4332))
-        TextButton(onClick = onAction) {
-            Text("See All", color = Color(0xFF2D6A4F), fontSize = 13.sp)
-        }
+        TextButton(onClick = onAction) { Text("See All", color = Color(0xFF2D6A4F), fontSize = 13.sp) }
     }
 }
