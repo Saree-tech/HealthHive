@@ -11,7 +11,7 @@
 ## ✨ Key Features
 
 * **👤 Smart Profile Management**
-  Real-time synchronization of user biometrics, medical history, and allergies across devices.
+  Real-time synchronization of user information, medical history, and allergies across devices.
 
 * **📊 Vitals Tracking**
   Monitor heart rate, blood pressure, steps, and sleep with interactive charts and a dynamic health score.
