@@ -64,7 +64,7 @@
 
 Clone the project using Git:
 
-git clone [https://github.com/your-username/HealthHive.git](https://github.com/your-username/HealthHive.git)
+git clone [https://github.com/Saree-tech/HealthHive](https://github.com/Saree-tech/HealthHive)
 
 ---
 
