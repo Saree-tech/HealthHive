@@ -1,10 +1,19 @@
 package com.example.healthhive.navigation
 
-sealed class Screen(val route: String) {
-    data object Login : Screen("login_screen")
-    data object Home : Screen("home_screen")
-    data object Splash : Screen("splash_screen")
-    // Add other screens here as needed, e.g.:
-    // data object SignUp : Screen("signup_screen")
-}
+import com.example.healthhive.Routes
 
+/**
+ * Maps the static Routes to a Navigation Screen hierarchy.
+ */
+sealed class Screen(val route: String) {
+    data object Splash : Screen(Routes.SPLASH)
+    data object Login : Screen(Routes.LOGIN)
+    data object Signup : Screen(Routes.SIGNUP)
+    data object Home : Screen(Routes.HOME)
+
+    // Adding new specific routes for our features
+    data object HealthCalendar : Screen("health_calendar_route")
+    data object Profile : Screen("profile_route")
+    data object EditProfile : Screen("edit_profile_route")
+    data object Chat : Screen("chat_route")
+}

@@ -1,15 +1,22 @@
-// File: com/example/healthhive/data/model/User.kt
-
 package com.example.healthhive.data.model
 
 /**
- * Data model for a user document stored in Firestore.
- * The 'id' corresponds to the Firebase Auth UID.
+ * Merged Data model for a user document stored in Firestore.
  */
 data class User(
     val id: String = "",
     val userName: String = "",
     val email: String = "",
-    val registrationTimestamp: Long = System.currentTimeMillis()
-    // Add other profile fields here later (e.g., dateOfBirth, gender, weight)
+    val registrationTimestamp: Long = System.currentTimeMillis(),
+
+    // Clinical & Profile Fields
+    val age: String = "",
+    val bloodType: String = "",
+    val allergies: String = "",
+    val medicalHistory: String = "",
+    val weight: String = "",
+    val height: String = "",
+
+    // New field for Profile Picture
+    val profilePictureUrl: String = ""
 )

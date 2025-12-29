@@ -36,10 +36,7 @@ import androidx.navigation.navArgument
 import com.example.healthhive.data.AuthService
 import com.example.healthhive.ui.screens.*
 import com.example.healthhive.ui.theme.HealthHiveTheme
-import com.example.healthhive.viewmodel.HomeViewModel
-import com.example.healthhive.viewmodel.SymptomCheckerViewModel
-import com.example.healthhive.viewmodel.VitalsViewModel
-import com.example.healthhive.viewmodel.HealthCalendarViewModel
+import com.example.healthhive.viewmodel.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
@@ -52,7 +49,8 @@ sealed class Screen(val route: String) {
     data object Recommendations : Screen("recommendations")
     data object Reports : Screen("reports")
     data object Tips : Screen("tips")
-    data object Settings : Screen("settings")
+    data object Profile : Screen("profile")
+    data object EditProfile : Screen("edit_profile")
     data object Calendar : Screen("calendar")
     data object VitalsDetail : Screen("vitals_detail/{vitalType}") {
         fun createRoute(vitalType: String) = "vitals_detail/$vitalType"
@@ -73,10 +71,13 @@ class MainActivity : ComponentActivity() {
                     val navController = rememberNavController()
                     val context = LocalContext.current
 
+                    // Initializing Shared ViewModels at the Top Level
+                    val vitalsViewModel: VitalsViewModel = viewModel()
+                    val profileViewModel: ProfileViewModel = viewModel()
+                    val newsViewModel: HealthNewsViewModel = viewModel() // Added for News Support
                     val chatViewModel: SymptomCheckerViewModel = viewModel(
                         factory = SymptomCheckerViewModel.Factory(applicationContext)
                     )
-                    val vitalsViewModel: VitalsViewModel = viewModel()
 
                     NavHost(
                         navController = navController,
@@ -101,17 +102,17 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(Screen.Home.route) {
-                            val homeViewModel: HomeViewModel = viewModel(factory = HomeViewModel.Factory())
                             HomeScreen(
                                 onNavigateTo = { route -> navController.navigate(route) },
                                 onSymptomCheckerClick = { navController.navigate(Screen.LumiChat.route) },
                                 onReportsClick = { navController.navigate(Screen.Reports.route) },
-                                onSettingsClick = { navController.navigate(Screen.Settings.route) },
+                                onSettingsClick = { navController.navigate(Screen.Profile.route) },
                                 onVitalClick = { type ->
                                     navController.navigate(Screen.VitalsDetail.createRoute(type))
                                 },
                                 vitalsViewModel = vitalsViewModel,
-                                homeViewModel = homeViewModel
+                                profileViewModel = profileViewModel,
+                                newsViewModel = newsViewModel // Now passing the News ViewModel
                             )
                         }
 
@@ -119,7 +120,14 @@ class MainActivity : ComponentActivity() {
                             SymptomCheckerScreen(chatViewModel)
                         }
 
-                        // --- UPDATED CALENDAR ROUTE ---
+                        composable(Screen.Reports.route) {
+                            ReportGeneratorScreen(
+                                onBackClick = { navController.popBackStack() },
+                                vitalsViewModel = vitalsViewModel,
+                                profileViewModel = profileViewModel
+                            )
+                        }
+
                         composable(Screen.Calendar.route) {
                             val calendarViewModel: HealthCalendarViewModel = viewModel()
                             val sharedPrefs = context.getSharedPreferences("user_prefs", Context.MODE_PRIVATE)
@@ -129,6 +137,26 @@ class MainActivity : ComponentActivity() {
                                 onBack = { navController.popBackStack() },
                                 viewModel = calendarViewModel,
                                 showProgressFromPrefs = showProgress
+                            )
+                        }
+
+                        composable(Screen.Profile.route) {
+                            ProfileScreen(
+                                viewModel = profileViewModel,
+                                onBack = { navController.popBackStack() },
+                                onEditClick = { navController.navigate(Screen.EditProfile.route) },
+                                onLogoutSuccess = {
+                                    navController.navigate(Screen.Auth.route) {
+                                        popUpTo(0) { inclusive = true }
+                                    }
+                                }
+                            )
+                        }
+
+                        composable(Screen.EditProfile.route) {
+                            EditProfileScreen(
+                                viewModel = profileViewModel,
+                                onNavigateBack = { navController.popBackStack() }
                             )
                         }
 
@@ -145,11 +173,13 @@ class MainActivity : ComponentActivity() {
                         }
 
                         composable(Screen.Tips.route) {
-                            NotificationsScreen(onBackClick = { navController.popBackStack() })
+                            // Fixed: Using the Placeholder instead of a missing NotificationsScreen
+                            PlaceholderScreen("Daily Health Tips", navController)
                         }
-                        composable(Screen.Recommendations.route) { PlaceholderScreen("Recommendations", navController) }
-                        composable(Screen.Reports.route) { PlaceholderScreen("History / Reports", navController) }
-                        composable(Screen.Settings.route) { PlaceholderScreen("Settings / Profile", navController) }
+
+                        composable(Screen.Recommendations.route) {
+                            PlaceholderScreen("Personalized Recommendations", navController)
+                        }
                     }
                 }
             }
@@ -323,7 +353,7 @@ fun PlaceholderScreen(title: String, navController: NavController) {
         }
     ) { padding ->
         Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-            Text("$title coming soon!")
+            Text("$title coming soon!", style = MaterialTheme.typography.bodyLarge)
         }
     }
 }

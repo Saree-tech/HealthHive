@@ -4,21 +4,26 @@ plugins {
     id 'com.google.gms.google-services'
     id 'org.jetbrains.kotlin.plugin.compose'
     id 'org.jetbrains.kotlin.plugin.serialization'
-    // REMOVED: id 'kotlin-kapt'
-    id 'com.google.devtools.ksp' version '2.1.0-1.0.29' // ADDED
+    id 'com.google.devtools.ksp' version '2.1.0-1.0.29'
 }
 
+// Load properties from local.properties
 def properties = new Properties()
-if (rootProject.file("local.properties").exists()) {
-    properties.load(rootProject.file("local.properties").newDataInputStream())
+def propertiesFile = rootProject.file("local.properties")
+if (propertiesFile.exists()) {
+    properties.load(propertiesFile.newDataInputStream())
 }
-def geminiApiKey = properties.getProperty("GEMINI_API_KEY", "")
+
+// Extract keys safely
+def geminiKey = properties.getProperty("GEMINI_API_KEY", "")
+def newsKey = properties.getProperty("NEWS_API", "") // Matches your local.properties variable
 
 android {
     namespace 'com.example.healthhive'
     compileSdk 34
 
     buildFeatures {
+        // This is the most important line to fix "Unresolved reference BuildConfig"
         buildConfig = true
         compose = true
     }
@@ -32,7 +37,10 @@ android {
         multiDexEnabled true
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
-        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiApiKey}\""
+
+        // These fields will be generated in the BuildConfig class
+        buildConfigField "String", "GEMINI_API_KEY", "\"${geminiKey}\""
+        buildConfigField "String", "NEWS_API_KEY", "\"${newsKey}\""
     }
 
     buildTypes {
@@ -74,14 +82,13 @@ dependencies {
     implementation libs.androidx.navigation.compose
     implementation "androidx.lifecycle:lifecycle-viewmodel-ktx:2.8.3"
 
-    // Room Database - UPDATED TO KSP
+    // Room Database
     def room_version = "2.6.1"
     implementation "androidx.room:room-runtime:$room_version"
     implementation "androidx.room:room-ktx:$room_version"
-    // CHANGED FROM kapt TO ksp
     ksp "androidx.room:room-compiler:$room_version"
 
-    // DataStore & SharedPrefs
+    // DataStore
     implementation "androidx.datastore:datastore-preferences:1.1.1"
 
     // Coroutines
@@ -91,19 +98,30 @@ dependencies {
     // Serialization
     implementation "org.jetbrains.kotlinx:kotlinx-serialization-json:1.6.3"
 
-    // Firebase (BOM)
+    // Firebase
     implementation platform("com.google.firebase:firebase-bom:34.6.0")
-    implementation("com.google.firebase:firebase-auth")
-    implementation("com.google.firebase:firebase-firestore")
-    implementation("com.google.firebase:firebase-analytics")
-    implementation ("androidx.fragment:fragment-ktx:1.8.5")
-    implementation ("androidx.activity:activity-ktx:1.9.3")
-    implementation ("androidx.core:core-ktx:1.13.1")
+    implementation "com.google.firebase:firebase-auth"
+    implementation "com.google.firebase:firebase-firestore"
+    implementation "com.google.firebase:firebase-analytics"
+    implementation "com.google.firebase:firebase-storage"
 
-    // AI / Gemini
-    implementation("com.google.ai.client.generativeai:generativeai:0.8.0")
-    implementation ("com.google.code.gson:gson:2.10.1")
+    // Lifecycle and UI Helpers
+    implementation "androidx.fragment:fragment-ktx:1.8.5"
+    implementation "androidx.activity:activity-ktx:1.9.3"
+    implementation "androidx.core:core-ktx:1.13.1"
+
+    // Image Loading
+    implementation "io.coil-kt:coil-compose:2.5.0"
+
+    // AI & JSON
+    implementation "com.google.ai.client.generativeai:generativeai:0.8.0"
+    implementation "com.google.code.gson:gson:2.10.1"
     implementation libs.androidx.tv.material
+
+    // Networking (Retrofit)
+    implementation "com.squareup.retrofit2:retrofit:2.9.0"
+    implementation "com.squareup.retrofit2:converter-gson:2.9.0"
+    implementation "com.squareup.okhttp3:logging-interceptor:4.12.0"
 
     // Testing
     testImplementation libs.junit

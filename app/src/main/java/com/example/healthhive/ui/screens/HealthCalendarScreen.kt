@@ -3,6 +3,7 @@
 package com.example.healthhive.ui.screens
 
 import android.Manifest
+import android.app.DatePickerDialog
 import android.app.TimePickerDialog
 import android.os.Build
 import android.widget.Toast
@@ -32,10 +33,11 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.healthhive.data.local.HealthEvent
 import com.example.healthhive.viewmodel.HealthCalendarViewModel
-import com.example.healthhive.utils.HealthNotificationHelper
 import java.text.SimpleDateFormat
 import java.util.*
 
@@ -49,18 +51,17 @@ fun HealthCalendarScreen(
     val selectedDate by viewModel.selectedDate.collectAsState()
     val allEvents by viewModel.dailyEvents.collectAsState()
 
-    var isMedSheetOpen by remember { mutableStateOf(false) }
-    var isApptSheetOpen by remember { mutableStateOf(false) }
+    var isMedDialogOpen by remember { mutableStateOf(false) }
+    var isApptDialogOpen by remember { mutableStateOf(false) }
 
     val medications = allEvents.filter { it.type == "MEDICATION" }
     val appointments = allEvents.filter { it.type == "APPOINTMENT" }
 
-    // --- PERMISSION REQUEST LOGIC ---
     val permissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (!isGranted) {
-            Toast.makeText(context, "Notifications disabled. Alarms won't show.", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Notifications disabled.", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -77,30 +78,22 @@ fun HealthCalendarScreen(
                 title = { Text("Health Hub", fontWeight = FontWeight.ExtraBold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Back")
                     }
                 },
                 actions = {
-                    // TEST NOTIFICATION BUTTON (Tests both styles)
-                    IconButton(onClick = {
-                        val helper = HealthNotificationHelper(context)
-                        helper.showNotification("Medication Test", "Take your 500mg dose", "MEDICATION")
-                        helper.showNotification("Appointment Test", "Visit Dr. Smith at 10AM", "APPOINTMENT")
-                    }) {
-                        Icon(imageVector = Icons.Default.NotificationsActive, contentDescription = "Test", tint = Color(0xFF2D6A4F))
-                    }
-                    IconButton(onClick = { isApptSheetOpen = true }) {
-                        Icon(imageVector = Icons.Default.Event, contentDescription = "Add Appointment", tint = Color(0xFF2D6A4F))
+                    IconButton(onClick = { isApptDialogOpen = true }) {
+                        Icon(Icons.Default.Event, "Add Appointment", tint = Color(0xFF2D6A4F))
                     }
                 }
             )
         },
         floatingActionButton = {
             ExtendedFloatingActionButton(
-                onClick = { isMedSheetOpen = true },
+                onClick = { isMedDialogOpen = true },
                 containerColor = Color(0xFF1B4332),
                 contentColor = Color.White,
-                icon = { Icon(imageVector = Icons.Default.Add, contentDescription = null) },
+                icon = { Icon(Icons.Default.Add, null) },
                 text = { Text("Add Medication") }
             )
         }
@@ -146,22 +139,179 @@ fun HealthCalendarScreen(
             }
         }
 
-        if (isMedSheetOpen) {
-            AddMedSheet(
-                onDismiss = { isMedSheetOpen = false },
-                onSave = { name, dose ->
-                    viewModel.addNewEvent(name, dose, "09:00 AM", selectedDate, "MEDICATION", RecurrenceType.DAILY)
+        if (isMedDialogOpen) {
+            AddMedDialog(
+                currentDate = selectedDate,
+                onDismiss = { isMedDialogOpen = false },
+                onSave = { name, dose, date ->
+                    viewModel.addNewEvent(name, dose, "09:00 AM", date, "MEDICATION", RecurrenceType.DAILY)
                 }
             )
         }
 
-        if (isApptSheetOpen) {
-            AddApptSheet(
-                onDismiss = { isApptSheetOpen = false },
-                onSave = { title, time, type ->
-                    viewModel.addNewEvent(title, "Doctor Appointment", time, selectedDate, "APPOINTMENT", type)
+        if (isApptDialogOpen) {
+            AddApptDialog(
+                currentDate = selectedDate,
+                onDismiss = { isApptDialogOpen = false },
+                onSave = { title, time, date, type ->
+                    viewModel.addNewEvent(title, "Doctor Appointment", time, date, "APPOINTMENT", type)
                 }
             )
+        }
+    }
+}
+
+// --- FULL SCREEN INPUT DIALOGS ---
+
+@Composable
+fun AddMedDialog(currentDate: String, onDismiss: () -> Unit, onSave: (String, String, String) -> Unit) {
+    var name by remember { mutableStateOf("") }
+    var dose by remember { mutableStateOf("") }
+    var dateString by remember { mutableStateOf(currentDate) }
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
+            Column(Modifier.fillMaxSize()) {
+                SmallTopAppBar(
+                    title = { Text("New Medication", fontWeight = FontWeight.Bold) },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null) } },
+                    actions = {
+                        TextButton(onClick = { if (name.isNotBlank()) { onSave(name, dose, dateString); onDismiss() } }) {
+                            Text("SAVE", fontWeight = FontWeight.ExtraBold, color = Color(0xFF1B4332))
+                        }
+                    }
+                )
+
+                Column(Modifier.padding(24.dp).verticalScroll(scrollState).imePadding()) {
+                    OutlinedTextField(
+                        value = name,
+                        onValueChange = { name = it },
+                        label = { Text("Medicine Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.MedicalInformation, null, tint = Color(0xFF1B4332)) }
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = dose,
+                        onValueChange = { dose = it },
+                        label = { Text("Dose (e.g. 500mg)") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.Science, null, tint = Color(0xFF1B4332)) }
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+                    DatePickerField(dateString) { dateString = it }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AddApptDialog(currentDate: String, onDismiss: () -> Unit, onSave: (String, String, String, RecurrenceType) -> Unit) {
+    var title by remember { mutableStateOf("") }
+    var time by remember { mutableStateOf("10:00 AM") }
+    var dateString by remember { mutableStateOf(currentDate) }
+    var type by remember { mutableStateOf(RecurrenceType.ONETIME) }
+    val context = LocalContext.current
+    val scrollState = rememberScrollState()
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Surface(modifier = Modifier.fillMaxSize(), color = Color.White) {
+            Column(Modifier.fillMaxSize()) {
+                SmallTopAppBar(
+                    title = { Text("Schedule Appointment", fontWeight = FontWeight.Bold) },
+                    navigationIcon = { IconButton(onClick = onDismiss) { Icon(Icons.Default.Close, null) } },
+                    actions = {
+                        TextButton(onClick = { if (title.isNotBlank()) { onSave(title, time, dateString, type); onDismiss() } }) {
+                            Text("DONE", fontWeight = FontWeight.ExtraBold, color = Color(0xFF1B4332))
+                        }
+                    }
+                )
+
+                Column(Modifier.padding(24.dp).verticalScroll(scrollState).imePadding()) {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text("Reason / Doctor Name") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        leadingIcon = { Icon(Icons.Default.PersonSearch, null, tint = Color(0xFF1B4332)) }
+                    )
+
+                    Spacer(Modifier.height(24.dp))
+                    DatePickerField(dateString) { dateString = it }
+
+                    Surface(
+                        onClick = {
+                            TimePickerDialog(context, { _, h, m ->
+                                val ampm = if (h < 12) "AM" else "PM"
+                                val hour = if (h % 12 == 0) 12 else h % 12
+                                time = String.format("%02d:%02d %s", hour, m, ampm)
+                            }, 10, 0, false).show()
+                        },
+                        modifier = Modifier.padding(vertical = 12.dp).fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        color = Color(0xFFF1F5F9)
+                    ) {
+                        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.AccessTime, null, tint = Color(0xFF1B4332))
+                            Spacer(Modifier.width(12.dp))
+                            Text("Time: $time", fontWeight = FontWeight.Medium)
+                        }
+                    }
+
+                    Spacer(Modifier.height(16.dp))
+                    Text("Recurrence", fontSize = 14.sp, color = Color.Gray, fontWeight = FontWeight.Bold)
+                    Row(Modifier.padding(vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf(RecurrenceType.ONETIME, RecurrenceType.WEEKLY, RecurrenceType.MONTHLY).forEach { rType ->
+                            FilterChip(
+                                selected = type == rType,
+                                onClick = { type = rType },
+                                label = { Text(rType.name.lowercase().replaceFirstChar { it.uppercase() }) }
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DatePickerField(currentDateStr: String, onDateSelected: (String) -> Unit) {
+    val context = LocalContext.current
+    val sdf = SimpleDateFormat("yyyyMMdd", Locale.getDefault())
+    val displaySdf = SimpleDateFormat("MMMM dd, yyyy", Locale.getDefault())
+
+    val date = sdf.parse(currentDateStr) ?: Date()
+    val calendar = Calendar.getInstance().apply { time = date }
+
+    Surface(
+        onClick = {
+            DatePickerDialog(context, { _, year, month, day ->
+                val newCal = Calendar.getInstance().apply { set(year, month, day) }
+                onDateSelected(sdf.format(newCal.time))
+            }, calendar.get(Calendar.YEAR), calendar.get(Calendar.MONTH), calendar.get(Calendar.DAY_OF_MONTH)).show()
+        },
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(12.dp),
+        color = Color(0xFFF1F5F9)
+    ) {
+        Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.CalendarToday, null, tint = Color(0xFF1B4332))
+            Spacer(Modifier.width(12.dp))
+            Text("Date: ${displaySdf.format(date)}", fontWeight = FontWeight.Medium)
         }
     }
 }
@@ -234,7 +384,7 @@ private fun isEventOnDate(event: HealthEvent, targetDate: String): Boolean {
     } catch (e: Exception) { false }
 }
 
-// --- UI CARDS ---
+// --- UI COMPONENTS ---
 
 @Composable
 fun ProfessionalDashboard(meds: List<HealthEvent>, selectedDate: String) {
@@ -258,31 +408,31 @@ fun ProfessionalMedCard(med: HealthEvent, isTaken: Boolean, onToggle: () -> Unit
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onToggle) {
-                Icon(imageVector = if (isTaken) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, contentDescription = null, tint = if (isTaken) Color(0xFF2D6A4F) else Color.Gray)
+                Icon(if (isTaken) Icons.Default.CheckCircle else Icons.Default.RadioButtonUnchecked, null, tint = if (isTaken) Color(0xFF2D6A4F) else Color.Gray)
             }
             Column(Modifier.weight(1f)) {
                 Text(med.title, fontWeight = FontWeight.Bold, color = if (isTaken) Color.Gray else Color.Black)
                 Text(med.subtitle, fontSize = 12.sp, color = Color.Gray)
             }
             IconButton(onClick = onDelete) {
-                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(0.3f))
+                Icon(Icons.Default.Delete, "Delete", tint = Color.Red.copy(0.3f))
             }
         }
     }
 }
 
 @Composable
-fun ProfessionalApptCard(appt: HealthEvent, onDismiss: () -> Unit) {
+fun ProfessionalApptCard(appt: HealthEvent, onDelete: () -> Unit) {
     Card(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color(0xFFECFDF5))) {
         Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Icon(imageVector = Icons.Default.MedicalServices, contentDescription = null, tint = Color(0xFF059669))
+            Icon(Icons.Default.MedicalServices, null, tint = Color(0xFF059669))
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(appt.title, fontWeight = FontWeight.Bold, color = Color(0xFF064E3B))
                 Text("${appt.time} • ${appt.recurrence}", fontSize = 12.sp, color = Color(0xFF059669))
             }
-            IconButton(onClick = onDismiss) {
-                Icon(imageVector = Icons.Default.Delete, contentDescription = "Delete", tint = Color.Red.copy(0.3f))
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, "Delete", tint = Color.Red.copy(0.3f))
             }
         }
     }
@@ -291,7 +441,7 @@ fun ProfessionalApptCard(appt: HealthEvent, onDismiss: () -> Unit) {
 @Composable
 fun SectionHeader(title: String, icon: ImageVector) {
     Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-        Icon(imageVector = icon, contentDescription = null, modifier = Modifier.size(18.dp), tint = Color.Gray)
+        Icon(icon, null, modifier = Modifier.size(18.dp), tint = Color.Gray)
         Text(title, Modifier.padding(start = 8.dp).weight(1f), fontWeight = FontWeight.Bold, fontSize = 14.sp, color = Color.Gray)
     }
 }
@@ -300,92 +450,5 @@ fun SectionHeader(title: String, icon: ImageVector) {
 fun EmptyStateHint(text: String) {
     Box(Modifier.fillMaxWidth().padding(32.dp), contentAlignment = Alignment.Center) {
         Text(text, color = Color.LightGray, fontSize = 14.sp)
-    }
-}
-
-// --- UPDATED BOTTOM SHEETS (Keyboard & Scroll Fix) ---
-
-@Composable
-fun AddMedSheet(onDismiss: () -> Unit, onSave: (String, String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var dose by remember { mutableStateOf("") }
-    val scrollState = rememberScrollState()
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .padding(24.dp)
-                .imePadding() // Pushes content above keyboard
-                .navigationBarsPadding()
-                .verticalScroll(scrollState) // Allows scrolling when keyboard is open
-        ) {
-            Text("New Medication", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("Medicine Name") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            OutlinedTextField(value = dose, onValueChange = { dose = it }, label = { Text("Dose (e.g. 500mg)") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-            Button(
-                onClick = { if (name.isNotBlank()) { onSave(name, dose); onDismiss() } },
-                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
-            ) { Text("Save Medication") }
-        }
-    }
-}
-
-@Composable
-fun AddApptSheet(onDismiss: () -> Unit, onSave: (String, String, RecurrenceType) -> Unit) {
-    var title by remember { mutableStateOf("") }
-    var time by remember { mutableStateOf("10:00 AM") }
-    var type by remember { mutableStateOf(RecurrenceType.ONETIME) }
-    val context = LocalContext.current
-    val scrollState = rememberScrollState()
-
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            Modifier
-                .padding(24.dp)
-                .imePadding()
-                .navigationBarsPadding()
-                .verticalScroll(scrollState)
-        ) {
-            Text("Schedule Checkup", fontSize = 20.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.height(16.dp))
-            OutlinedTextField(value = title, onValueChange = { title = it }, label = { Text("Reason / Doctor") }, modifier = Modifier.fillMaxWidth(), singleLine = true)
-
-            Surface(
-                onClick = {
-                    TimePickerDialog(context, { _, h, m ->
-                        val ampm = if (h < 12) "AM" else "PM"
-                        val hour = if (h % 12 == 0) 12 else h % 12
-                        time = String.format("%02d:%02d %s", hour, m, ampm)
-                    }, 10, 0, false).show()
-                },
-                modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = Color(0xFFF1F3F4)
-            ) {
-                Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.AccessTime, contentDescription = null, tint = Color.Gray)
-                    Spacer(Modifier.width(8.dp))
-                    Text("Time: $time")
-                }
-            }
-
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf(RecurrenceType.ONETIME, RecurrenceType.WEEKLY, RecurrenceType.MONTHLY).forEach { rType ->
-                    FilterChip(
-                        selected = type == rType,
-                        onClick = { type = rType },
-                        label = { Text(rType.name.lowercase().replaceFirstChar { it.uppercase() }) }
-                    )
-                }
-            }
-
-            Button(
-                onClick = { if (title.isNotBlank()) { onSave(title, time, type); onDismiss() } },
-                modifier = Modifier.fillMaxWidth().padding(top = 24.dp, bottom = 16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
-            ) { Text("Schedule") }
-        }
     }
 }

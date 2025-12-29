@@ -46,7 +46,7 @@ class VitalsViewModel : ViewModel() {
 
     private val generativeModel by lazy {
         GenerativeModel(
-            modelName = "gemini-1.5-flash",
+            modelName = "gemini-2.5-flash",
             apiKey = BuildConfig.GEMINI_API_KEY,
             generationConfig = generationConfig { temperature = 0.4f }
         )
@@ -55,9 +55,13 @@ class VitalsViewModel : ViewModel() {
     fun startListening(vitalType: String) {
         val userId = auth.currentUser?.uid ?: return
         listenerRegistration?.remove()
-        _uiState.update { it.copy(isLoading = true, aiRecommendation = "") }
+
+        // IMPORTANT: We do NOT clear aiRecommendation here.
+        // This allows the previous response to stay visible when the screen opens.
+        _uiState.update { it.copy(isLoading = true) }
 
         val collectionRef = firestore.collection("users").document(userId).collection("vitals")
+
         val query = if (vitalType == "All") {
             collectionRef.orderBy("timestamp", Query.Direction.DESCENDING).limit(50)
         } else {
@@ -65,7 +69,12 @@ class VitalsViewModel : ViewModel() {
                 .orderBy("timestamp", Query.Direction.DESCENDING).limit(20)
         }
 
-        listenerRegistration = query.addSnapshotListener { snapshot, _ ->
+        listenerRegistration = query.addSnapshotListener { snapshot, error ->
+            if (error != null) {
+                _uiState.update { it.copy(isLoading = false) }
+                return@addSnapshotListener
+            }
+
             viewModelScope.launch(Dispatchers.Default) {
                 val entries = snapshot?.documents?.mapNotNull { doc ->
                     val value = (doc.get("value") as? Number)?.toFloat() ?: 0f
@@ -77,43 +86,68 @@ class VitalsViewModel : ViewModel() {
 
                 val sorted = entries.sortedBy { it.timestamp }
                 val latest = entries.groupBy { it.type }.mapValues { it.value.first().value }
-
-                val score = if (latest.isEmpty()) 0.70f else {
-                    val avgNormalized = latest.values.map { (it / 150f).coerceIn(0f, 1f) }.average()
-                    avgNormalized.toFloat()
-                }
+                val updatedScore = calculateHealthScoreFromMap(latest)
 
                 withContext(Dispatchers.Main) {
                     _uiState.update {
-                        it.copy(history = sorted, latestVitals = latest, healthScore = score, isLoading = false)
+                        it.copy(
+                            history = sorted,
+                            latestVitals = latest,
+                            healthScore = updatedScore,
+                            isLoading = false
+                        )
                     }
                 }
             }
         }
     }
 
+    private fun calculateHealthScoreFromMap(vitalsMap: Map<String, Float>): Float {
+        if (vitalsMap.isEmpty()) return 0.5f
+        var points = 0f
+        var totalTracked = 0
+
+        vitalsMap.forEach { (type, value) ->
+            totalTracked++
+            points += when (type) {
+                "Heart Rate" -> if (value in 60f..100f) 1.0f else 0.6f
+                "Blood Pressure" -> if (value in 90f..125f) 1.0f else 0.5f
+                "Steps" -> if (value >= 8000f) 1.0f else 0.7f
+                "Sleep" -> if (value in 7f..9f) 1.0f else 0.6f
+                else -> 0.8f
+            }
+        }
+        return (points / totalTracked).coerceIn(0f, 1f)
+    }
+
+    /**
+     * AI Request now ONLY triggers when this is called by a button click.
+     */
     fun triggerManualAnalysis(type: String) {
-        val history = _uiState.value.history
+        val currentState = _uiState.value
+        val history = currentState.history
+
         if (history.isEmpty()) return
 
         viewModelScope.launch {
-            _uiState.update { it.copy(isLumiThinking = true) }
+            // Clear only when a NEW request actually starts
+            _uiState.update { it.copy(isLumiThinking = true, aiRecommendation = "") }
+
             val prompt = if (type == "All") {
-                "Recent vitals: ${history.takeLast(10).joinToString { "${it.type}:${it.value}" }}. Provide exactly 30 words of advice. No symbols."
+                val summaryData = currentState.latestVitals.entries.joinToString { "${it.key}: ${it.value}" }
+                "Summarize health for these readings: $summaryData. Provide 30 words of advice. No symbols."
             } else {
-                "Vital recorded: $type at ${history.last().value}. Provide 15 simple words of advice. No symbols."
+                val currentVal = history.lastOrNull()?.value ?: 0f
+                "The user recorded a $type reading of $currentVal. Provide 15 words of advice specifically for $type. No symbols."
             }
 
             try {
                 val response = generativeModel.generateContent(prompt)
-                val cleanText = response.text?.replace("*", "")?.trim() ?: "Trends are stable."
+                val cleanText = response.text?.replace("*", "")?.trim() ?: "Data is stable."
                 _uiState.update { it.copy(aiRecommendation = cleanText, isLumiThinking = false) }
-            } catch (e: QuotaExceededException) {
-                _uiState.update {
-                    it.copy(aiRecommendation = "Lumi is resting. Please retry in 1 minute.", isLumiThinking = false)
-                }
             } catch (e: Exception) {
-                _uiState.update { it.copy(aiRecommendation = "Lumi is busy. Try again soon.", isLumiThinking = false) }
+                val errorMsg = if (e is QuotaExceededException) "Lumi is resting. Retry in 1 min." else "Lumi is busy. Try again soon."
+                _uiState.update { it.copy(aiRecommendation = errorMsg, isLumiThinking = false) }
             }
         }
     }
@@ -121,10 +155,15 @@ class VitalsViewModel : ViewModel() {
     fun saveNewEntry(type: String, value: String) {
         val userId = auth.currentUser?.uid ?: return
         val valFloat = value.toFloatOrNull() ?: return
-        val data = hashMapOf("type" to type, "value" to valFloat, "timestamp" to System.currentTimeMillis())
 
+        val data = hashMapOf(
+            "type" to type,
+            "value" to valFloat,
+            "timestamp" to System.currentTimeMillis()
+        )
+
+        // Only saves to Firestore. Does NOT trigger AI anymore.
         firestore.collection("users").document(userId).collection("vitals").add(data)
-            .addOnSuccessListener { triggerManualAnalysis(type) }
     }
 
     override fun onCleared() {

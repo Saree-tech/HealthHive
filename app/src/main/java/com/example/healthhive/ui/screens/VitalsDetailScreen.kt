@@ -50,8 +50,7 @@ fun VitalsDetailScreen(
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, null, tint = Color(0xFF1B4332))
                     }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(containerColor = Color.Transparent)
+                }
             )
         }
     ) { padding ->
@@ -80,7 +79,8 @@ fun VitalsDetailScreen(
                     elevation = CardDefaults.cardElevation(2.dp)
                 ) {
                     Box(Modifier.padding(20.dp).fillMaxSize()) {
-                        if (uiState.isLoading) {
+                        // FIX: Only show loader if we have NO history yet
+                        if (uiState.isLoading && uiState.history.isEmpty()) {
                             CircularProgressIndicator(Modifier.align(Alignment.Center), color = Color(0xFF2D6A4F))
                         } else if (uiState.history.isEmpty()) {
                             Text("No history recorded", Modifier.align(Alignment.Center), color = Color.Gray)
@@ -93,31 +93,7 @@ fun VitalsDetailScreen(
 
             if (uiState.isLumiThinking || uiState.aiRecommendation.isNotEmpty()) {
                 Spacer(modifier = Modifier.height(24.dp))
-                Text("Lumi's Analysis", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
-                Card(
-                    modifier = Modifier.padding(vertical = 12.dp).fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    elevation = CardDefaults.cardElevation(2.dp)
-                ) {
-                    Column(Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Surface(shape = CircleShape, color = Color(0xFFE8F5E9), modifier = Modifier.size(32.dp)) {
-                                Icon(Icons.Default.AutoAwesome, null, Modifier.padding(6.dp), tint = Color(0xFF2D6A4F))
-                            }
-                            Spacer(Modifier.width(12.dp))
-                            if (uiState.isLumiThinking) {
-                                LinearProgressIndicator(Modifier.weight(1f), color = Color(0xFF2D6A4F))
-                            } else {
-                                Text("AI Insight", fontWeight = FontWeight.Bold, color = Color(0xFF2D6A4F))
-                            }
-                        }
-                        if (!uiState.isLumiThinking && uiState.aiRecommendation.isNotEmpty()) {
-                            Spacer(Modifier.height(12.dp))
-                            Text(text = uiState.aiRecommendation, fontSize = 15.sp, color = Color(0xFF1B4332), fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
+                LumiInsightCard(uiState.aiRecommendation, uiState.isLumiThinking)
             }
 
             if (!isSummaryMode) {
@@ -133,7 +109,12 @@ fun VitalsDetailScreen(
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = Color(0xFF2D6A4F))
                 )
                 Button(
-                    onClick = { if(inputValue.isNotBlank()){ viewModel.saveNewEntry(vitalType, inputValue); inputValue = "" } },
+                    onClick = {
+                        if(inputValue.isNotBlank()){
+                            viewModel.saveNewEntry(vitalType, inputValue)
+                            inputValue = ""
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp).height(56.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF1B4332))
@@ -147,12 +128,39 @@ fun VitalsDetailScreen(
 }
 
 @Composable
+fun LumiInsightCard(text: String, isThinking: Boolean) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = Color.White),
+        elevation = CardDefaults.cardElevation(2.dp)
+    ) {
+        Column(Modifier.padding(20.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(shape = CircleShape, color = Color(0xFFE8F5E9), modifier = Modifier.size(32.dp)) {
+                    Icon(Icons.Default.AutoAwesome, null, Modifier.padding(6.dp), tint = Color(0xFF2D6A4F))
+                }
+                Spacer(Modifier.width(12.dp))
+                if (isThinking) {
+                    LinearProgressIndicator(Modifier.weight(1f), color = Color(0xFF2D6A4F))
+                } else {
+                    Text("AI Insight", fontWeight = FontWeight.Bold, color = Color(0xFF2D6A4F))
+                }
+            }
+            if (!isThinking && text.isNotEmpty()) {
+                Spacer(Modifier.height(12.dp))
+                Text(text = text, fontSize = 15.sp, color = Color(0xFF1B4332), fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+@Composable
 fun SummaryDashboard(latest: Map<String, Float>) {
     Column {
         Text("Latest Readings", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = Color(0xFF1B4332))
         Spacer(Modifier.height(12.dp))
-        val items = latest.toList()
-        items.chunked(2).forEach { rowItems ->
+        latest.toList().chunked(2).forEach { rowItems ->
             Row(Modifier.fillMaxWidth()) {
                 rowItems.forEach { item ->
                     Card(Modifier.weight(1f).padding(4.dp), shape = RoundedCornerShape(20.dp), colors = CardDefaults.cardColors(containerColor = Color.White)) {
