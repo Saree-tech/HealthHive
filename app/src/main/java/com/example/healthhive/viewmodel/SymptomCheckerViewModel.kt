@@ -1,10 +1,12 @@
 package com.example.healthhive.viewmodel
 
 import android.content.Context
+import android.util.Log
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.healthhive.data.AIService
+import com.example.healthhive.data.model.User
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.ListenerRegistration
@@ -15,6 +17,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 
 // --- MODELS ---
 data class ChatSession(
@@ -24,25 +27,12 @@ data class ChatSession(
     val timestamp: Long = System.currentTimeMillis()
 )
 
-/**
- * FIXED: ChatMessage now explicitly handles the "user" field found in your Firestore logs.
- * We use @get:PropertyName and @set:PropertyName to ensure Firestore can read/write
- * the data even if the field names are slightly different.
- */
 data class ChatMessage(
     val text: String = "",
-
-    @get:PropertyName("isUser")
-    @set:PropertyName("isUser")
-    var isUser: Boolean = true,
-
-    @get:PropertyName("user")
-    @set:PropertyName("user")
-    var user: String = "", // Matches the Firestore "user" field in your log
-
+    @get:PropertyName("isUser") @set:PropertyName("isUser") var isUser: Boolean = true,
+    @get:PropertyName("user") @set:PropertyName("user") var user: String = "",
     val timestamp: Long = System.currentTimeMillis()
 ) {
-    // Required empty constructor for Firestore's toObject() method
     constructor() : this("", true, "", System.currentTimeMillis())
 }
 
@@ -103,23 +93,6 @@ class SymptomCheckerViewModel(
             }
     }
 
-    fun resetAnalysis() {
-        messageListener?.remove()
-        messageListener = null
-        aiService.resetSession()
-
-        _uiState.update {
-            it.copy(
-                activeSessionId = null,
-                chatHistory = emptyList(),
-                messageInput = "",
-                isLoading = false,
-                isAnalysisComplete = false,
-                error = null
-            )
-        }
-    }
-
     fun sendMessage(userMessage: String) {
         val trimmedMessage = userMessage.trim()
         val currentUser = auth.currentUser
@@ -129,7 +102,6 @@ class SymptomCheckerViewModel(
 
         val sid = _uiState.value.activeSessionId ?: createNewSession(trimmedMessage)
 
-        // Populate 'user' with the email/ID to satisfy Firestore's expectation
         val userChatMessage = ChatMessage(
             text = trimmedMessage,
             isUser = true,
@@ -137,17 +109,39 @@ class SymptomCheckerViewModel(
         )
 
         saveMessageToFirestore(sid, userChatMessage)
-
         _uiState.update { it.copy(messageInput = "", isLoading = true, error = null) }
 
         viewModelScope.launch {
             try {
-                // Take only the last few messages for context to keep the prompt clean
-                val chatContext = _uiState.value.chatHistory.takeLast(10).joinToString("\n") {
+                // 1. Fetch User Profile for Personalization
+                val userProfile = db.collection("users").document(uid).get().await().toObject(User::class.java)
+
+                // 2. Build Expert System Prompt with Profile Data
+                val systemPersona = """
+                    You are Lumi, an expert medical assistant within the HealthHive app. 
+                    The user you are helping has the following profile:
+                    - Age: ${userProfile?.age ?: "Not provided"}
+                    - Weight: ${userProfile?.weight ?: "Not provided"} kg
+                    - Height: ${userProfile?.height ?: "Not provided"} cm
+                    - Known Allergies: ${userProfile?.allergies ?: "None reported"}
+                    - Medical History: ${userProfile?.medicalHistory ?: "No significant history reported"}
+
+                    INSTRUCTIONS:
+                    - Provide expert-level medical insights and clinical reasoning.
+                    - Always consider the user's allergies and medical history before suggesting any lifestyle changes or over-the-counter options.
+                    - Do NOT prescribe specific prescription dosages, but DO suggest specific medical tests, specialists to visit, or clinically recognized self-care steps.
+                    - If symptoms match their history, highlight the connection.
+                    - Maintain a professional, empathetic, and clinical tone.
+                """.trimIndent()
+
+                // 3. Build Conversation Context
+                val chatContext = _uiState.value.chatHistory.takeLast(5).joinToString("\n") {
                     if (it.isUser) "User: ${it.text}" else "Lumi: ${it.text}"
                 }
 
-                val response = aiService.sendMessage("$chatContext\nUser: $trimmedMessage")
+                // 4. Send to Gemini
+                val fullPrompt = "$systemPersona\n\nRecent History:\n$chatContext\nUser's new message: $trimmedMessage"
+                val response = aiService.sendMessage(fullPrompt)
 
                 val assistantChatMessage = ChatMessage(
                     text = response,
@@ -158,6 +152,7 @@ class SymptomCheckerViewModel(
                 saveMessageToFirestore(sid, assistantChatMessage)
                 _uiState.update { it.copy(isLoading = false) }
             } catch (e: Exception) {
+                Log.e("LumiError", e.message ?: "Unknown error")
                 _uiState.update { it.copy(isLoading = false, error = "Lumi failed: ${e.localizedMessage}") }
             }
         }
@@ -181,19 +176,28 @@ class SymptomCheckerViewModel(
         return sessionRef.id
     }
 
+    private fun saveMessageToFirestore(sid: String, message: ChatMessage) {
+        val uid = auth.currentUser?.uid ?: return
+        db.collection("users").document(uid)
+            .collection("sessions").document(sid)
+            .collection("messages").add(message)
+    }
+
+    fun resetAnalysis() {
+        messageListener?.remove()
+        messageListener = null
+        aiService.resetSession()
+        _uiState.update {
+            it.copy(activeSessionId = null, chatHistory = emptyList(), messageInput = "", isLoading = false, isAnalysisComplete = false, error = null)
+        }
+    }
+
     fun deleteSession(sessionId: String) {
         val uid = auth.currentUser?.uid ?: return
         db.collection("users").document(uid).collection("sessions").document(sessionId).delete()
         if (_uiState.value.activeSessionId == sessionId) {
             resetAnalysis()
         }
-    }
-
-    private fun saveMessageToFirestore(sid: String, message: ChatMessage) {
-        val uid = auth.currentUser?.uid ?: return
-        db.collection("users").document(uid)
-            .collection("sessions").document(sid)
-            .collection("messages").add(message)
     }
 
     override fun onCleared() {

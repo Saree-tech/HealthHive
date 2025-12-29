@@ -1,9 +1,11 @@
+// File: com/example/healthhive/data/AuthService.kt
 package com.example.healthhive.data
 
 import android.net.Uri
 import com.example.healthhive.data.model.User
 import com.google.firebase.auth.FirebaseAuth
 import com.google.firebase.auth.FirebaseUser
+import com.google.firebase.auth.UserProfileChangeRequest
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.tasks.await
@@ -15,87 +17,106 @@ class AuthService {
     private val storage: FirebaseStorage = FirebaseStorage.getInstance()
     private val usersCollection = firestore.collection("users")
 
+    /**
+     * Logs in an existing user with email and password.
+     */
     suspend fun login(email: String, password: String): FirebaseUser {
         return try {
-            auth.signInWithEmailAndPassword(email, password).await().user
-                ?: throw Exception("Login failed: User object is null.")
-        } catch (e: Exception) {
-            throw e
-        }
-    }
-
-    suspend fun signup(email: String, password: String, userName: String): FirebaseUser {
-        return try {
-            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
-            val firebaseUser = authResult.user
-                ?: throw Exception("Signup failed: User object is null.")
-
-            val newUser = User(
-                id = firebaseUser.uid,
-                userName = userName,
-                email = email,
-                registrationTimestamp = System.currentTimeMillis(),
-                age = "",
-                bloodType = "",
-                allergies = "",
-                medicalHistory = "",
-                weight = "",
-                height = "",
-                profilePictureUrl = ""
-            )
-
-            usersCollection.document(firebaseUser.uid).set(newUser).await()
-            return firebaseUser
+            val result = auth.signInWithEmailAndPassword(email, password).await()
+            result.user ?: throw Exception("Login failed: User object is null.")
         } catch (e: Exception) {
             throw e
         }
     }
 
     /**
-     * FIXED: Explicitly creates the reference hierarchy and uses .child()
-     * to avoid pathing errors that lead to 404s.
+     * Creates a new user, updates their Firebase Auth profile,
+     * and initializes their Firestore document.
+     */
+    suspend fun signup(email: String, password: String, userName: String): FirebaseUser {
+        return try {
+            // 1. Create the Auth User in Firebase
+            val authResult = auth.createUserWithEmailAndPassword(email, password).await()
+            val firebaseUser = authResult.user
+                ?: throw Exception("Signup failed: User object is null.")
+
+            // 2. Update the internal Firebase Auth DisplayName
+            val profileUpdates = UserProfileChangeRequest.Builder()
+                .setDisplayName(userName)
+                .build()
+            firebaseUser.updateProfile(profileUpdates).await()
+
+            // 3. Create the User Data Model for Firestore
+            val newUser = User(
+                id = firebaseUser.uid,
+                userName = userName,
+                email = email,
+                registrationTimestamp = System.currentTimeMillis()
+            )
+
+            // 4. Save the document to the "users" collection using the UID as the ID
+            usersCollection.document(firebaseUser.uid).set(newUser).await()
+
+            firebaseUser
+        } catch (e: Exception) {
+            throw e
+        }
+    }
+
+    /**
+     * Fetches a complete User object from Firestore.
+     */
+    suspend fun getUserData(userId: String): User {
+        return try {
+            val snapshot = usersCollection.document(userId).get().await()
+            if (!snapshot.exists()) {
+                throw Exception("User profile document not found in Firestore.")
+            }
+            // Maps the Firestore fields (like userName) to the Kotlin User data class
+            snapshot.toObject(User::class.java)
+                ?: throw Exception("Failed to parse User profile data.")
+        } catch (e: Exception) {
+            throw e
+        }
+    }
+
+    /**
+     * Uploads an image to Firebase Storage and returns the public URL.
      */
     suspend fun uploadProfilePicture(userId: String, imageUri: Uri): String {
         return try {
-            // Use storage.reference to get the root, then build the path
             val storageRef = storage.reference
                 .child("profile_pictures")
                 .child("$userId.jpg")
 
-            // Upload file
             storageRef.putFile(imageUri).await()
-
-            // Get URL
-            val url = storageRef.downloadUrl.await().toString()
-            return url
+            storageRef.downloadUrl.await().toString()
         } catch (e: Exception) {
-            // Rethrowing specific message to help debugging
             throw Exception("Storage error: ${e.localizedMessage}")
         }
     }
 
-    suspend fun sendPasswordResetEmail(email: String): Void? {
-        return try {
+    /**
+     * Sends a password reset email to the user.
+     */
+    suspend fun sendPasswordResetEmail(email: String) {
+        try {
             auth.sendPasswordResetEmail(email).await()
         } catch (e: Exception) {
             throw e
         }
     }
 
-    suspend fun getUserData(userId: String): User {
-        return try {
-            val snapshot = usersCollection.document(userId).get().await()
-            snapshot.toObject(User::class.java)
-                ?: throw Exception("User profile data not found.")
-        } catch (e: Exception) {
-            throw e
-        }
-    }
-
+    /**
+     * Gets the currently logged-in Firebase User.
+     */
     fun getCurrentUser(): FirebaseUser? {
         return auth.currentUser
     }
 
+    /**
+     * Logs the user out.
+     */
     fun signOut() {
         auth.signOut()
     }

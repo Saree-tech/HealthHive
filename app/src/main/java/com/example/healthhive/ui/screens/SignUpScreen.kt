@@ -46,6 +46,7 @@ fun SignUpScreen(
 
     val snackbarHostState = remember { SnackbarHostState() }
 
+    // Navigation and Error Handling
     LaunchedEffect(uiState.isSignUpSuccessful) {
         if (uiState.isSignUpSuccessful) {
             viewModel.resetUiState()
@@ -84,7 +85,7 @@ fun SignUpScreen(
             ) {
                 Spacer(modifier = Modifier.height(40.dp))
 
-                // 1. Header Section
+                // Header Section
                 Image(
                     painter = painterResource(id = R.drawable.logo),
                     contentDescription = "Logo",
@@ -106,7 +107,6 @@ fun SignUpScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // 2. Input Fields
                 // Name Field
                 OutlinedTextField(
                     value = userName,
@@ -206,7 +206,7 @@ fun SignUpScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // 3. Sign Up Button
+                // Sign Up Button
                 Button(
                     onClick = {
                         if (password != confirmPassword) {
@@ -223,7 +223,12 @@ fun SignUpScreen(
                     enabled = !uiState.isLoading && userName.isNotBlank() && email.isNotBlank()
                 ) {
                     if (uiState.isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                        // FIXED: Using Modifier.size instead of direct size parameter
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
                     } else {
                         Text("Create Account", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
@@ -231,7 +236,7 @@ fun SignUpScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // 4. Footer
+                // Footer
                 Row(modifier = Modifier.padding(bottom = 32.dp)) {
                     Text("Already have an account? ", color = Color.Gray)
                     Text(

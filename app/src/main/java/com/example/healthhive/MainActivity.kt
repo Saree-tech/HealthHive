@@ -1,3 +1,5 @@
+// File: com/example/healthhive/MainActivity.kt
+
 @file:OptIn(ExperimentalMaterial3Api::class)
 
 package com.example.healthhive
@@ -10,6 +12,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -34,12 +37,9 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-// FIREBASE IMPORTS
 import com.google.firebase.FirebaseApp
 import com.google.firebase.appcheck.FirebaseAppCheck
-import com.google.firebase.appcheck.playintegrity.PlayIntegrityAppCheckProviderFactory
 import com.google.firebase.appcheck.debug.DebugAppCheckProviderFactory
-
 import com.example.healthhive.data.AuthService
 import com.example.healthhive.ui.screens.*
 import com.example.healthhive.ui.theme.HealthHiveTheme
@@ -69,12 +69,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // --- FIREBASE INITIALIZATION ---
         FirebaseApp.initializeApp(this)
         val firebaseAppCheck = FirebaseAppCheck.getInstance()
-
-        // Use Debug Provider for Emulators/Testing, Play Integrity for Production
-        // Note: For real devices, PlayIntegrity is preferred.
         firebaseAppCheck.installAppCheckProviderFactory(
             DebugAppCheckProviderFactory.getInstance()
         )
@@ -91,16 +87,10 @@ class MainActivity : ComponentActivity() {
                     val context = LocalContext.current
                     val application = context.applicationContext as android.app.Application
 
+                    // Shared ViewModels
                     val profileViewModel: ProfileViewModel = viewModel()
                     val vitalsViewModel: VitalsViewModel = viewModel()
                     val newsViewModel: HealthNewsViewModel = viewModel()
-
-                    val chatViewModel: SymptomCheckerViewModel = viewModel(
-                        factory = SymptomCheckerViewModel.Factory(application)
-                    )
-                    val homeViewModel: HomeViewModel = viewModel(
-                        factory = HomeViewModel.Factory(application)
-                    )
 
                     NavHost(
                         navController = navController,
@@ -134,12 +124,15 @@ class MainActivity : ComponentActivity() {
                                     navController.navigate(Screen.VitalsDetail.createRoute(type))
                                 },
                                 vitalsViewModel = vitalsViewModel,
-                                profileViewModel = profileViewModel,
+                                // FIXED: Removed profileViewModel as it is not a parameter in HomeScreen
                                 newsViewModel = newsViewModel
                             )
                         }
 
                         composable(Screen.LumiChat.route) {
+                            val chatViewModel: SymptomCheckerViewModel = viewModel(
+                                factory = SymptomCheckerViewModel.Factory(application)
+                            )
                             SymptomCheckerScreen(chatViewModel)
                         }
 
@@ -209,8 +202,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-// ... SplashScreen, AuthScreen, and PlaceholderScreen remain the same ...
-
+// ... (SplashScreen, AuthScreen, and PlaceholderScreen stay as you had them)
 @Composable
 fun SplashScreen(navController: NavController, authService: AuthService) {
     val context = LocalContext.current

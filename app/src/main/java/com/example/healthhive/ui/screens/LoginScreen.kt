@@ -25,19 +25,26 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.healthhive.R
 import com.example.healthhive.viewmodel.LoginViewModel
 import com.example.healthhive.viewmodel.LoginUiState
+import com.example.healthhive.viewmodel.ForgotPasswordViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LoginScreen(
     onLoginSuccess: () -> Unit,
     onSignUpClick: () -> Unit,
-    viewModel: LoginViewModel = viewModel()
+    onForgotPasswordClick: () -> Unit, // Added to navigate to your separate ForgotPasswordScreen
+    viewModel: LoginViewModel = viewModel(),
+    forgotPasswordViewModel: ForgotPasswordViewModel = viewModel()
 ) {
     val uiState: LoginUiState by viewModel.uiState.collectAsState()
+    val forgotUiState by forgotPasswordViewModel.uiState.collectAsState()
+
     var email by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
     var showForgotDialog by remember { mutableStateOf(false) }
     var resetEmail by remember { mutableStateOf("") }
+
+    val snackbarHostState = remember { SnackbarHostState() }
 
     // Navigation on Success
     LaunchedEffect(uiState.isLoginSuccessful) {
@@ -47,16 +54,23 @@ fun LoginScreen(
         }
     }
 
-    val snackbarHostState = remember { SnackbarHostState() }
-
-    LaunchedEffect(uiState.error) {
+    // Error & Success Handling
+    LaunchedEffect(uiState.error, forgotUiState.error, forgotUiState.isEmailSent) {
         uiState.error?.let {
             snackbarHostState.showSnackbar(it)
             viewModel.resetUiState()
         }
+        forgotUiState.error?.let {
+            snackbarHostState.showSnackbar(it)
+            forgotPasswordViewModel.resetUiState()
+        }
+        if (forgotUiState.isEmailSent) {
+            snackbarHostState.showSnackbar(forgotUiState.emailSentMessage ?: "Reset email sent!")
+            forgotPasswordViewModel.resetUiState()
+            showForgotDialog = false
+        }
     }
 
-    // Modern Medical Gradient
     val backgroundGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFFF0F9F9), Color(0xFFFFFFFF))
     )
@@ -79,7 +93,6 @@ fun LoginScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                // 1. Branding Header
                 Image(
                     painter = painterResource(id = R.drawable.logo),
                     contentDescription = "Logo",
@@ -101,7 +114,6 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(40.dp))
 
-                // 2. Email Input
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
@@ -121,7 +133,6 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(16.dp))
 
-                // 3. Password Input
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it },
@@ -140,13 +151,16 @@ fun LoginScreen(
                     singleLine = true
                 )
 
-                // 4. Forgot Password Right Aligned
                 Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterEnd) {
                     Text(
                         text = "Forgot Password?",
                         modifier = Modifier
                             .padding(vertical = 12.dp)
-                            .clickable { showForgotDialog = true },
+                            .clickable {
+                                // Choice: Open Dialog OR Navigate to separate screen
+                                // showForgotDialog = true
+                                onForgotPasswordClick()
+                            },
                         style = MaterialTheme.typography.bodyMedium.copy(
                             color = Color(0xFF2D6A4F),
                             fontWeight = FontWeight.SemiBold
@@ -156,7 +170,6 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(20.dp))
 
-                // 5. Login Button
                 Button(
                     onClick = { viewModel.login(email, password) },
                     modifier = Modifier
@@ -167,7 +180,12 @@ fun LoginScreen(
                     enabled = !uiState.isLoading
                 ) {
                     if (uiState.isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                        // FIXED: Modifier.size instead of size parameter
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
                     } else {
                         Text("Login", fontSize = 18.sp, fontWeight = FontWeight.Bold)
                     }
@@ -175,7 +193,6 @@ fun LoginScreen(
 
                 Spacer(modifier = Modifier.height(32.dp))
 
-                // 6. Sign Up Footer
                 Row {
                     Text("Don't have an account? ", color = Color.Gray)
                     Text(
@@ -189,10 +206,10 @@ fun LoginScreen(
         }
     }
 
-    // --- FORGOT PASSWORD DIALOG ---
+    // --- FORGOT PASSWORD DIALOG (Kept for reference, logic fixed) ---
     if (showForgotDialog) {
         AlertDialog(
-            onDismissRequest = { showForgotDialog = false },
+            onDismissRequest = { if (!forgotUiState.isLoading) showForgotDialog = false },
             title = { Text("Reset Password", fontWeight = FontWeight.Bold) },
             text = {
                 Column {
@@ -202,19 +219,29 @@ fun LoginScreen(
                         value = resetEmail,
                         onValueChange = { resetEmail = it },
                         label = { Text("Email") },
-                        shape = RoundedCornerShape(12.dp)
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                        singleLine = true
                     )
                 }
             },
             confirmButton = {
                 Button(
-                    onClick = {
-                        // Add viewModel.forgotPassword(resetEmail) here later
-                        showForgotDialog = false
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F))
+                    onClick = { forgotPasswordViewModel.sendResetEmail(resetEmail) },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF2D6A4F)),
+                    enabled = !forgotUiState.isLoading
                 ) {
-                    Text("Send Link")
+                    if (forgotUiState.isLoading) {
+                        // FIXED: Modifier.size instead of size parameter
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(20.dp),
+                            color = Color.White,
+                            strokeWidth = 2.dp
+                        )
+                    } else {
+                        Text("Send Link")
+                    }
                 }
             },
             dismissButton = {

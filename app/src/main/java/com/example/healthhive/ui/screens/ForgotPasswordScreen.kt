@@ -35,7 +35,7 @@ fun ForgotPasswordScreen(
     var email by remember { mutableStateOf("") }
     val snackbarHostState = remember { SnackbarHostState() }
 
-    // Navigation and Snackbar Logic
+    // --- NAVIGATION AND SNACKBAR LOGIC ---
     LaunchedEffect(uiState.isEmailSent) {
         if (uiState.isEmailSent) {
             snackbarHostState.showSnackbar(
@@ -43,6 +43,7 @@ fun ForgotPasswordScreen(
                 duration = SnackbarDuration.Short
             )
             viewModel.resetUiState()
+            // Navigate back or to a success state after a small delay to let them read the snackbar
             onSendResetSuccess()
         }
     }
@@ -54,7 +55,7 @@ fun ForgotPasswordScreen(
         }
     }
 
-    // Theme Background
+    // Modern Medical Gradient
     val backgroundGradient = Brush.verticalGradient(
         colors = listOf(Color(0xFFF0F9F9), Color(0xFFFFFFFF))
     )
@@ -67,7 +68,11 @@ fun ForgotPasswordScreen(
                 title = { },
                 navigationIcon = {
                     IconButton(onClick = onBackToLoginClick) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = Color(0xFF1B4332))
+                        Icon(
+                            imageVector = Icons.Default.ArrowBack,
+                            contentDescription = "Back",
+                            tint = Color(0xFF1B4332)
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Transparent)
@@ -99,7 +104,9 @@ fun ForgotPasswordScreen(
                     Icon(
                         imageVector = Icons.Default.LockReset,
                         contentDescription = null,
-                        modifier = Modifier.padding(20.dp).size(60.dp),
+                        modifier = Modifier
+                            .padding(20.dp)
+                            .size(60.dp),
                         tint = Color(0xFF2D6A4F)
                     )
                 }
@@ -127,7 +134,7 @@ fun ForgotPasswordScreen(
 
                 Spacer(modifier = Modifier.height(48.dp))
 
-                // Email Input with Icon
+                // Email Input
                 OutlinedTextField(
                     value = email,
                     onValueChange = { email = it },
@@ -161,7 +168,12 @@ fun ForgotPasswordScreen(
                     enabled = !uiState.isLoading && email.isNotBlank()
                 ) {
                     if (uiState.isLoading) {
-                        CircularProgressIndicator(color = Color.White, modifier = Modifier.size(24.dp))
+                        // FIXED: Corrected CircularProgressIndicator usage
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.5.dp
+                        )
                     } else {
                         Text("Send Reset Link", fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     }
@@ -169,15 +181,23 @@ fun ForgotPasswordScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // Footer
-                Text(
-                    text = "Remembered your password? Log in",
+                // Footer Navigation
+                Row(
                     modifier = Modifier.clickable { onBackToLoginClick() },
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = Color(0xFF2D6A4F),
-                        fontWeight = FontWeight.SemiBold
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "Remembered your password? ",
+                        style = MaterialTheme.typography.bodyMedium.copy(color = Color.Gray)
                     )
-                )
+                    Text(
+                        text = "Log in",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = Color(0xFF2D6A4F),
+                            fontWeight = FontWeight.Bold
+                        )
+                    )
+                }
             }
         }
     }

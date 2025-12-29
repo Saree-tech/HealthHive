@@ -217,13 +217,17 @@ fun EditProfileScreen(
 }
 
 // THIS WAS MISSING - ADD THIS AT THE BOTTOM OF YOUR FILE
+
 @Composable
 fun ProfileSectionTitle(title: String) {
     Text(
         text = title,
-        fontSize = 13.sp,
-        fontWeight = FontWeight.Black,
-        color = Color(0xFF2D6A4F),
-        modifier = Modifier.padding(bottom = 4.dp)
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontWeight = FontWeight.Bold,
+            color = Color(0xFF2D6A4F)
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 8.dp)
     )
 }

@@ -1,7 +1,8 @@
-// File: com.example.healthhive.viewmodel.HomeViewModel.kt
+// File: com/example/healthhive/viewmodel/HomeViewModel.kt
 package com.example.healthhive.viewmodel
 
 import android.app.Application
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
@@ -16,7 +17,6 @@ import kotlinx.coroutines.launch
 
 /**
  * Data class representing the state of the Home Screen.
- * Includes [selectedMood] to power the new Mood Handler UI.
  */
 data class HomeUiState(
     val user: User? = null,
@@ -47,13 +47,40 @@ class HomeViewModel(
     private val cacheManager = LocalCacheManager(application)
 
     init {
-        refreshDashboard()
+        // Start real-time listeners for both Profile and Vitals
+        listenToUserProfile()
         listenToLiveVitals()
         observeCachedMood()
     }
 
     /**
-     * Loads the saved mood from DataStore/LocalCache on initialization.
+     * UPDATED: Real-time listener for the User Profile document.
+     * This ensures the UI updates the moment the profile is created or changed.
+     */
+    private fun listenToUserProfile() {
+        val currentUserId = authService.getCurrentUser()?.uid ?: return
+
+        firestore.collection("users").document(currentUserId)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    Log.e("HomeVM", "Profile listener error: ${error.message}")
+                    _uiState.update { it.copy(error = "Profile sync failed", isLoading = false) }
+                    return@addSnapshotListener
+                }
+
+                if (snapshot != null && snapshot.exists()) {
+                    val userProfile = snapshot.toObject(User::class.java)
+                    _uiState.update {
+                        it.copy(user = userProfile, isLoading = false, error = null)
+                    }
+                } else {
+                    _uiState.update { it.copy(isLoading = false) }
+                }
+            }
+    }
+
+    /**
+     * Observes the locally cached mood from DataStore/Preferences.
      */
     private fun observeCachedMood() {
         viewModelScope.launch {
@@ -64,29 +91,25 @@ class HomeViewModel(
     }
 
     /**
-     * Updates the user's mood both in the UI state and persistent local cache.
+     * Updates mood in UI and local storage.
      */
     fun updateMood(mood: String) {
         viewModelScope.launch {
-            // Immediate UI feedback (MVI Pattern)
             _uiState.update { it.copy(selectedMood = mood) }
-            // Persistent storage
             cacheManager.saveMood(mood)
         }
     }
 
-    private fun refreshDashboard() {
-        val currentUserId = authService.getCurrentUser()?.uid ?: return
-        viewModelScope.launch {
-            try {
-                val userProfile = authService.getUserData(currentUserId)
-                _uiState.update { it.copy(user = userProfile, isLoading = false) }
-            } catch (e: Exception) {
-                _uiState.update { it.copy(error = e.localizedMessage, isLoading = false) }
-            }
-        }
+    /**
+     * Triggered manually if the user wants to force a profile refresh.
+     */
+    fun refreshDashboard() {
+        listenToUserProfile()
     }
 
+    /**
+     * Real-time listener for the vitals sub-collection.
+     */
     private fun listenToLiveVitals() {
         val userId = authService.getCurrentUser()?.uid ?: return
 
@@ -136,7 +159,7 @@ class HomeViewModel(
     }
 
     private fun calculateHealthScore(vitals: List<Pair<String, Float?>>): Float {
-        if (vitals.isEmpty()) return 0.5f // Default "neutral" score
+        if (vitals.isEmpty()) return 0.5f
         var points = 0f
         vitals.forEach { (type, value) ->
             if (value == null) return@forEach
@@ -149,9 +172,6 @@ class HomeViewModel(
         return (points / vitals.size).coerceIn(0f, 1f)
     }
 
-    /**
-     * Corrected Factory to ensure [Application] is passed properly from MainActivity/HomeScreen.
-     */
     class Factory(private val app: Application) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
